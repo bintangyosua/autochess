@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { overlay } from '../../lib/overlayState.svelte';
+  import { overlay, toggleArrow, type ProviderView } from '../../lib/overlayState.svelte';
 
   /**
    * Papan digambar sebagai grid 8x8 lewat viewBox, jadi koordinat panah ditulis dalam
@@ -14,39 +14,49 @@
   }
 
   interface Arrow {
+    key: string;
     x1: number; y1: number; x2: number; y2: number;
     color: string; width: number; opacity: number;
   }
 
-  // Saran pertama digambar tebal dan pekat; alternatif makin tipis dan pudar.
+  /**
+   * Hanya langkah terbaik tiap provider yang digambar. Menggambar tiga panah per
+   * provider membuat papan tidak terbaca; peringkat selengkapnya ada di panel.
+   */
   const arrows = $derived<Arrow[]>(
-    overlay.suggestions.slice(0, 3).map((s, i) => {
-      const from = toXY(s.uci.slice(0, 2));
-      const to = toXY(s.uci.slice(2, 4));
+    Object.entries(overlay.providers).flatMap(([id, view]) => {
+      const best = view.suggestions[0];
+      if (!best || !view.arrowVisible) return [];
+
+      const from = toXY(best.uci.slice(0, 2));
+      const to = toXY(best.uci.slice(2, 4));
       // Pendekkan ujung panah supaya kepalanya berhenti di tepi kotak tujuan,
       // bukan menutupi bidak yang ada di sana.
       const dx = to.x - from.x;
       const dy = to.y - from.y;
       const len = Math.hypot(dx, dy) || 1;
       const trim = 0.3;
-      return {
-        x1: from.x,
-        y1: from.y,
+      return [{
+        key: id,
+        x1: from.x, y1: from.y,
         x2: to.x - (dx / len) * trim,
         y2: to.y - (dy / len) * trim,
-        color: i === 0 ? '#2563eb' : '#475569',
-        width: i === 0 ? 0.13 : 0.08,
-        opacity: i === 0 ? 0.9 : 0.5,
-      };
+        color: view.color,
+        width: view.kind === 'strength' ? 0.13 : 0.1,
+        opacity: view.kind === 'strength' ? 0.9 : 0.75,
+      }];
     }),
   );
 
-  function scoreText(s: { scoreCp?: number; mateIn?: number; policy?: number }): string {
+  function scoreText(s: Suggestion, kind: ProviderView['kind']): string {
     if (s.mateIn !== undefined) return `#${s.mateIn}`;
+    if (kind === 'human-like' && s.policy !== undefined) return `${(s.policy * 100).toFixed(0)}%`;
     if (s.scoreCp !== undefined) return (s.scoreCp > 0 ? '+' : '') + (s.scoreCp / 100).toFixed(2);
-    if (s.policy !== undefined) return `${(s.policy * 100).toFixed(0)}%`;
     return '';
   }
+
+  type Suggestion = ProviderView['suggestions'][number];
+  const views = $derived(Object.entries(overlay.providers));
 </script>
 
 {#if overlay.visible && overlay.rect.width > 0}
@@ -61,9 +71,9 @@
   >
     <svg class="arrows" viewBox="0 0 8 8" preserveAspectRatio="none" aria-hidden="true">
       <defs>
-        {#each arrows as arrow, i (i)}
+        {#each arrows as arrow (arrow.key)}
           <marker
-            id="head-{i}"
+            id="head-{arrow.key}"
             viewBox="0 0 10 10"
             refX="8"
             refY="5"
@@ -76,37 +86,55 @@
         {/each}
       </defs>
 
-      {#each arrows as arrow, i (i)}
+      {#each arrows as arrow (arrow.key)}
         <line
           x1={arrow.x1} y1={arrow.y1} x2={arrow.x2} y2={arrow.y2}
           stroke={arrow.color}
           stroke-width={arrow.width}
           stroke-linecap="round"
           opacity={arrow.opacity}
-          marker-end="url(#head-{i})"
+          marker-end="url(#head-{arrow.key})"
         />
       {/each}
     </svg>
 
     <div class="panel">
-      <div class="head">
-        <strong>Stockfish</strong>
-        {#if overlay.depth}<span class="dim">d{overlay.depth}</span>{/if}
-        {#if overlay.status === 'thinking'}<span class="dim">...</span>{/if}
-      </div>
+      {#each views as [id, view] (id)}
+        <section class:muted={!view.arrowVisible}>
+          <button
+            type="button"
+            class="head"
+            aria-pressed={view.arrowVisible}
+            title={view.arrowVisible ? 'Sembunyikan panah' : 'Tampilkan panah'}
+            onclick={() => toggleArrow(id)}
+          >
+            <span
+              class="swatch"
+              style={view.arrowVisible
+                ? `background:${view.color}; border-color:${view.color}`
+                : `background:transparent; border-color:${view.color}`}
+            ></span>
+            <strong>{view.label}</strong>
+            {#if view.depth}<span class="dim">d{view.depth}</span>{/if}
+            {#if view.status === 'thinking'}<span class="dim">...</span>{/if}
+          </button>
 
-      {#if overlay.suggestions.length > 0}
-        <ol>
-          {#each overlay.suggestions.slice(0, 3) as s, i (s.uci)}
-            <li class:best={i === 0}>
-              <span class="move">{s.san ?? s.uci}</span>
-              <span class="score">{scoreText(s)}</span>
-            </li>
-          {/each}
-        </ol>
+          {#if view.suggestions.length > 0}
+            <ol>
+              {#each view.suggestions.slice(0, 3) as s, i (s.uci)}
+                <li class:best={i === 0}>
+                  <span class="move">{s.san ?? s.uci}</span>
+                  <span class="score">{scoreText(s, view.kind)}</span>
+                </li>
+              {/each}
+            </ol>
+          {:else}
+            <p class="dim">{overlay.note || '—'}</p>
+          {/if}
+        </section>
       {:else}
-        <p class="dim">{overlay.note || 'menunggu posisi...'}</p>
-      {/if}
+        <p class="dim">menunggu posisi...</p>
+      {/each}
 
       <!-- Hak rokade memang selalu ditebak sampai move list terbaca; itu normal dan
            tidak perlu diperingatkan. Yang berbahaya adalah giliran yang salah baca. -->
@@ -133,10 +161,13 @@
   }
 
   .panel {
+    /* Root-nya pointer-events:none supaya papan tetap bisa dimainkan; panel
+       mengaktifkannya lagi agar tombolnya bisa diklik. */
+    pointer-events: auto;
     position: absolute;
     top: 4px;
     right: 4px;
-    min-width: 108px;
+    min-width: 116px;
     padding: 5px 7px;
     border-radius: 6px;
     background: rgba(24, 24, 27, 0.85);
@@ -144,14 +175,42 @@
     font: 11.5px/1.4 system-ui, sans-serif;
     backdrop-filter: blur(2px);
   }
-  .head { display: flex; gap: 5px; align-items: baseline; margin-bottom: 1px; }
+  section + section { margin-top: 5px; padding-top: 4px; border-top: 1px solid #3f3f46; }
+  .head {
+    display: flex;
+    gap: 4px;
+    align-items: baseline;
+    margin-bottom: 1px;
+    width: 100%;
+    padding: 1px 2px;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .head:hover { background: rgba(255, 255, 255, 0.09); }
+  .head:focus-visible { outline: 1px solid #93c5fd; }
+  section.muted .head strong,
+  section.muted ol { opacity: 0.45; }
+  .swatch {
+    width: 7px;
+    height: 7px;
+    border: 1px solid;
+    border-radius: 50%;
+    align-self: center;
+    flex: none;
+    box-sizing: border-box;
+  }
   .dim { color: #a1a1aa; font-size: 10.5px; font-weight: 400; }
   ol { list-style: none; margin: 0; padding: 0; }
   li { display: flex; justify-content: space-between; gap: 10px; color: #d4d4d8; }
-  li.best { color: #93c5fd; font-weight: 600; }
+  li.best { color: #f4f4f5; font-weight: 600; }
   .move, .score { font-variant-numeric: tabular-nums; }
   .score { color: #a1a1aa; }
-  li.best .score { color: #93c5fd; }
+  li.best .score { color: #e4e4e7; }
   .warn { margin: 3px 0 0; color: #fcd34d; font-size: 10px; }
   p { margin: 0; }
 </style>

@@ -200,13 +200,13 @@ Tidak ada papan yang kita render sendiri. Overlay = satu `<svg>` transparan yang
 | 1 | Scaffold pnpm workspace + WXT + shared types | `wxt build` menghasilkan MV3 | **selesai** |
 | 2 | `UciProcess` + StockfishProvider | script node kirim FEN -> dapat bestmove | **selesai** |
 | 3 | WS server + protokol + registry | klien WS bisa analyze | **selesai** |
-| 4 | Ambil lc0, MaiaProvider `go nodes 1` | dapat top-3 policy dari maia-1900 | butuh lc0.exe |
+| 4 | Lc0Provider: Maia (policy) + Leela (search) | top-3 policy dari maia-1900 | **selesai, teruji** |
 | 5a | Bidak DOM -> bagian papan FEN + unit test | FEN cocok dengan DOM asli | **selesai** (kini dipakai sebagai verifikator) |
 | 5b | Move list -> replay chess.js -> FEN utuh (sumber utama) | FEN 6 field cocok dengan bidak DOM | logika murni selesai; butuh DOM untuk selector |
 | 5c | Simpulkan giliran/rokade/ep dari sorotan langkah terakhir | FEN 6 field tanpa move list | **selesai**, selector `.highlight` belum diverifikasi |
 | 6 | Background EngineClient + reconnect + teruskan hasil ke tab | hasil sampai ke content script | **selesai** |
-| 7 | Overlay Svelte (panel saran) | saran tampil real-time | kode selesai, **belum terlihat di browser** |
-| 8 | Panah SVG + flip handling | panah pas di kedua orientasi | kode selesai, **belum terlihat di browser** |
+| 7 | Overlay Svelte (panel saran, 3 engine) | saran tampil real-time | tampil di browser; versi 3 engine belum dikonfirmasi |
+| 8 | Panah SVG + flip handling | panah pas di kedua orientasi | tampil, geometri baru diperbaiki, **belum dikonfirmasi** |
 | 9 | Popup settings + persist `storage.local` | setting bertahan setelah reload | popup status sudah ada |
 | 10 | Packaging: `wxt build`, `bridge.bat`, README setup | orang lain bisa pasang dari nol | README sudah ada |
 

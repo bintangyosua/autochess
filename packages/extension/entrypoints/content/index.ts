@@ -3,10 +3,24 @@ import { browser } from 'wxt/browser';
 import Overlay from './Overlay.svelte';
 import { watchBoard } from '../../lib/board/DomBoardReader';
 import { findBoard } from '../../lib/board/selectors';
-import { applyResult, clearSuggestions, overlay } from '../../lib/overlayState.svelte';
+import {
+  applyResult,
+  markProblem,
+  markThinking,
+  onArrowsChanged,
+  overlay,
+  registerProvider,
+} from '../../lib/overlayState.svelte';
 import { isRuntimeMessage } from '../../lib/messages';
 
-const PROVIDER_ID = 'stockfish';
+/** Kunci storage untuk daftar engine yang panahnya ditampilkan. */
+const ARROWS_KEY = 'visibleArrows';
+
+const PROVIDERS = [
+  { id: 'stockfish', label: 'Stockfish', kind: 'strength' as const, color: '#2563eb' },
+  { id: 'leela', label: 'Leela', kind: 'strength' as const, color: '#16a34a' },
+  { id: 'maia-1900', label: 'Maia 1900', kind: 'human-like' as const, color: '#ea7317' },
+];
 const MOVETIME_MS = 800;
 const MULTIPV = 3;
 
@@ -40,6 +54,26 @@ export default defineContentScript({
 
   async main(ctx) {
     console.log('[cmr] content script jalan di', location.pathname);
+
+    // Pilihan panah disimpan di storage.local supaya bertahan setelah reload dan
+    // berlaku sama di semua tab chess.com.
+    const stored = await browser.storage.local.get(ARROWS_KEY);
+    const visible = stored[ARROWS_KEY];
+    const isVisible = (id: string) => (Array.isArray(visible) ? visible.includes(id) : true);
+
+    for (const p of PROVIDERS) registerProvider(p.id, p.label, p.kind, p.color, isVisible(p.id));
+
+    onArrowsChanged((ids) => void browser.storage.local.set({ [ARROWS_KEY]: ids }));
+
+    // Tab lain bisa mengubah pilihan yang sama; ikuti perubahannya.
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes[ARROWS_KEY]) return;
+      const ids = changes[ARROWS_KEY].newValue;
+      if (!Array.isArray(ids)) return;
+      for (const [id, view] of Object.entries(overlay.providers)) {
+        view.arrowVisible = ids.includes(id);
+      }
+    });
 
     const board = await waitForBoard(ctx.signal);
     if (!board) return;
@@ -115,7 +149,7 @@ export default defineContentScript({
       if (raw.type === 'analysis') applyResult(raw.result, raw.final);
       else if (raw.type === 'engineError') {
         console.warn('[cmr] engine error:', raw.message);
-        clearSuggestions('blocked', raw.message);
+        markProblem('blocked', raw.message);
       }
     });
 
@@ -126,12 +160,12 @@ export default defineContentScript({
      * bangun sering gagal karena WebSocket ke bridge belum tersambung ulang — dan tanpa
      * percobaan kedua, papan akan diam tanpa saran sampai langkah berikutnya.
      */
-    function requestAnalysis(fen: string, attempt = 1): void {
+    function requestAnalysis(providerId: string, fen: string, attempt = 1): void {
       void browser.runtime
         .sendMessage({
           type: 'analyze',
           reqId: `r${++reqId}`,
-          providerId: PROVIDER_ID,
+          providerId,
           fen,
           movetimeMs: MOVETIME_MS,
           multipv: MULTIPV,
@@ -140,15 +174,15 @@ export default defineContentScript({
           const ok = (reply as { ok?: boolean } | undefined)?.ok;
           if (ok) return;
           if (attempt < 3) {
-            ctx.setTimeout(() => requestAnalysis(fen, attempt + 1), 500 * attempt);
+            ctx.setTimeout(() => requestAnalysis(providerId, fen, attempt + 1), 500 * attempt);
             return;
           }
           console.warn('[cmr] bridge tidak menerima permintaan setelah 3 percobaan');
-          clearSuggestions('offline', 'bridge tidak terhubung');
+          markProblem('offline', 'bridge tidak terhubung');
         })
         .catch((err) => {
           console.warn('[cmr] gagal kirim ke background:', err);
-          clearSuggestions('offline', 'background tidak merespons');
+          markProblem('offline', 'background tidak merespons');
         });
     }
 
@@ -160,10 +194,10 @@ export default defineContentScript({
         syncPosition();
 
         console.log(`[cmr] posisi: ${snapshot.fen} (sorotan: ${snapshot.highlights.length})`);
-        clearSuggestions('thinking');
-        requestAnalysis(snapshot.fen!);
+        markThinking();
+        for (const p of PROVIDERS) requestAnalysis(p.id, snapshot.fen!);
       },
-      onBoardMissing: () => clearSuggestions('idle', 'papan tidak terbaca'),
+      onBoardMissing: () => markProblem('idle', 'papan tidak terbaca'),
     });
   },
 });

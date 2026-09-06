@@ -6,7 +6,8 @@ import type {
   Suggestion,
 } from '@cmr/shared';
 import { UciProcess } from '../uci/UciProcess.js';
-import { parseBestmove, parseInfo } from '../uci/parseInfo.js';
+import { parseBestmove } from '../uci/parseInfo.js';
+import { createMultiPvCollector } from '../uci/collectMultiPv.js';
 import { uciLineToSan } from '../san.js';
 
 export interface StockfishProviderConfig {
@@ -88,64 +89,20 @@ export class StockfishProvider implements EngineProvider {
     }
 
     const startedAt = Date.now();
-    let depth: number | undefined;
-    let nps: number | undefined;
-
-    // Slot MultiPV hanya boleh dibaca dalam satu iterasi depth yang sama. Kalau dicampur,
-    // slot yang belum ter-update di depth terakhir menyisakan move dari depth sebelumnya
-    // dan hasilnya bisa memuat move yang sama dua kali.
-    let current = new Map<number, Suggestion>();
-    let currentDepth: number | undefined;
-    let completed = new Map<number, Suggestion>();
-
-    const bestIteration = () => (current.size >= completed.size ? current : completed);
+    const collector = createMultiPvCollector(req.fen);
 
     const snapshot = (partial: boolean): AnalysisResult => ({
       providerId: this.id,
       fen: req.fen,
-      suggestions: [...bestIteration().entries()]
-        .sort(([a], [b]) => a - b)
-        .map(([, suggestion]) => suggestion),
-      depth,
-      nps,
+      suggestions: collector.suggestions(),
+      depth: collector.depth(),
+      nps: collector.nps(),
       elapsedMs: Date.now() - startedAt,
       partial,
     });
 
     const off = proc.onLine((line) => {
-      const info = parseInfo(line);
-      if (!info || info.string !== undefined) return;
-      // Skor lowerbound/upperbound berasal dari aspiration window dan akan direvisi.
-      if (info.bound) return;
-      if (!info.pv?.length) {
-        if (info.depth !== undefined) depth = info.depth;
-        if (info.nps !== undefined) nps = info.nps;
-        return;
-      }
-
-      if (info.depth !== undefined) depth = info.depth;
-      if (info.nps !== undefined) nps = info.nps;
-
-      // Iterasi depth baru dimulai. Simpan iterasi sebelumnya hanya kalau ia minimal
-      // selengkap yang tersimpan — kalau tidak, iterasi yang baru terisi satu slot akan
-      // menimpa iterasi utuh dan hasil akhirnya menyusut jadi satu move.
-      if (info.depth !== undefined && info.depth !== currentDepth) {
-        if (current.size >= completed.size) completed = current;
-        current = new Map();
-        currentDepth = info.depth;
-      }
-
-      const pv = info.pv;
-      const san = uciLineToSan(req.fen, pv.slice(0, 6));
-      current.set(info.multipv ?? 1, {
-        uci: pv[0]!,
-        san: san[0],
-        scoreCp: info.scoreCp,
-        mateIn: info.mateIn,
-        pv,
-      });
-
-      onUpdate?.(snapshot(true));
+      if (collector.feed(line)) onUpdate?.(snapshot(true));
     });
 
     try {
@@ -159,13 +116,14 @@ export class StockfishProvider implements EngineProvider {
       const bestmove = await finished;
 
       // Posisi mate/stalemate tidak menghasilkan baris pv sama sekali.
-      if (bestIteration().size === 0 && bestmove.best !== '(none)') {
-        current.set(1, {
+      const result = snapshot(false);
+      if (result.suggestions.length === 0 && bestmove.best !== '(none)') {
+        result.suggestions.push({
           uci: bestmove.best,
           san: uciLineToSan(req.fen, [bestmove.best])[0],
         });
       }
-      return snapshot(false);
+      return result;
     } finally {
       this.running = false;
       off();

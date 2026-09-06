@@ -9,8 +9,7 @@ Rancangan lengkap ada di [PLAN.md](PLAN.md).
 ## Prasyarat
 - Node 20+ dan pnpm
 - `stockfish/stockfish-windows-x86-64-universal.exe` (sudah ada)
-- `engines/lc0/lc0.exe` — **belum ada**, dibutuhkan untuk Maia. Download dari release
-  LeelaChessZero/lc0, lalu set `enabled: true` pada entri `maia-1900` di `engines.config.json`.
+- `lc0/lc0.exe` beserta DLL-nya (dari release LeelaChessZero/lc0) — dipakai Maia dan Leela.
 
 ## Jalankan
 
@@ -34,9 +33,24 @@ pnpm bridge:probe -- --fen "<FEN>" --movetime 1500 --multipv 3
 pnpm bridge:probe -- --provider maia-1900 --debug
 ```
 
+## Engine yang tersedia
+
+| id | Model | Sifat |
+|---|---|---|
+| `stockfish` | Stockfish 19 | terkuat secara objektif |
+| `leela` | Leela 791556 | kuat, gaya berbeda dari Stockfish |
+| `maia-1900` | Maia 1900 | meniru pemain manusia rating ~1900 |
+| `maia-1500`, `maia-1300` | Maia | terdaftar, tinggal `enabled: true` |
+
 ## Menambah engine
-Tambahkan entri di `engines.config.json`. Untuk Maia 1500/1300 cukup salin entri
-`maia-1900`, ganti `id` dan `weights` — tidak ada kode yang perlu diubah.
+Tambahkan entri di `engines.config.json` — tidak ada kode yang perlu diubah.
+
+`type: "lc0"` punya dua mode, memakai biner yang sama:
+
+| mode | perintah | keluaran | untuk |
+|---|---|---|---|
+| `policy` | `go nodes 1` | persentase policy | Maia — kemiripan dengan manusia justru datang dari tidak mencari |
+| `search` | `go movetime` | evaluasi centipawn | jaringan Leela biasa |
 
 ## Struktur
 | Paket | Isi |

@@ -1,5 +1,5 @@
 {
-  "$comment": "Path relatif terhadap root repo. Tambah Maia 1500/1300 cukup dengan menyalin entri maia-1900 dan mengganti weights + id.",
+  "$comment": "Path relatif terhadap root repo. type lc0 punya dua mode: \"policy\" (go nodes 1, meniru manusia = Maia) dan \"search\" (pencarian penuh = Leela biasa). Menambah model cukup menyalin satu entri.",
   "engines": [
     {
       "id": "stockfish",
@@ -18,18 +18,60 @@
       }
     },
     {
+      "id": "leela",
+      "label": "Leela 791556",
+      "kind": "strength",
+      "type": "lc0",
+      "mode": "search",
+      "enabled": true,
+      "path": "lc0/lc0.exe",
+      "weights": "lc0/791556.pb.gz",
+      "defaults": {
+        "movetimeMs": 800,
+        "multipv": 3
+      }
+    },
+    {
       "id": "maia-1900",
       "label": "Maia 1900",
       "kind": "human-like",
       "type": "lc0",
-      "enabled": false,
-      "$enabledNote": "set true setelah engines/lc0/lc0.exe tersedia",
-      "path": "engines/lc0/lc0.exe",
+      "enabled": true,
+      "path": "lc0/lc0.exe",
       "weights": "maia-1900.pb.gz",
       "defaults": {
         "nodes": 1,
         "multipv": 3
-      }
+      },
+      "mode": "policy"
+    },
+    {
+      "id": "maia-1500",
+      "label": "Maia 1500",
+      "kind": "human-like",
+      "type": "lc0",
+      "enabled": false,
+      "path": "lc0/lc0.exe",
+      "weights": "maia-1500.pb.gz",
+      "defaults": {
+        "nodes": 1,
+        "multipv": 3
+      },
+      "mode": "policy"
+    },
+    {
+      "id": "maia-1300",
+      "label": "Maia 1300",
+      "kind": "human-like",
+      "type": "lc0",
+      "enabled": false,
+      "path": "lc0/lc0.exe",
+      "weights": "maia-1300.pb.gz",
+      "defaults": {
+        "nodes": 1,
+        "multipv": 3
+      },
+      "mode": "policy"
     }
   ]
 }

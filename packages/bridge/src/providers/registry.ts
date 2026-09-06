@@ -4,6 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EngineProvider, ProviderInfo } from '@cmr/shared';
 import { StockfishProvider } from './StockfishProvider.js';
+import { Lc0Provider, type Lc0Mode } from './Lc0Provider.js';
 
 /** Root repo = tiga level di atas packages/bridge/src/providers. */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -16,6 +17,8 @@ interface EngineConfigEntry {
   enabled?: boolean;
   path: string;
   weights?: string;
+  /** Khusus type lc0: 'policy' untuk Maia, 'search' untuk Leela biasa. */
+  mode?: Lc0Mode;
   options?: Record<string, string | number | boolean>;
   defaults?: { movetimeMs?: number; depth?: number; nodes?: number; multipv?: number };
 }
@@ -55,20 +58,39 @@ export class ProviderRegistry {
       return;
     }
 
-    if (config.type !== 'stockfish') {
-      // MaiaProvider (lc0) menyusul di milestone 4, setelah lc0.exe tersedia.
-      this.entries.set(config.id, { info: { ...base, problem: `tipe "${config.type}" belum didukung` } });
+    let provider: EngineProvider;
+    if (config.type === 'stockfish') {
+      provider = new StockfishProvider({
+        id: config.id,
+        label: config.label,
+        path: binary,
+        options: config.options,
+        defaults: config.defaults,
+        debug,
+      });
+    } else if (config.type === 'lc0') {
+      if (!config.weights) {
+        this.entries.set(config.id, { info: { ...base, problem: 'entri lc0 tanpa "weights"' } });
+        return;
+      }
+      const weights = resolve(REPO_ROOT, config.weights);
+      if (!existsSync(weights)) {
+        this.entries.set(config.id, { info: { ...base, problem: `bobot tidak ditemukan: ${weights}` } });
+        return;
+      }
+      provider = new Lc0Provider({
+        id: config.id,
+        label: config.label,
+        path: binary,
+        weights,
+        mode: config.mode ?? 'policy',
+        defaults: config.defaults,
+        debug,
+      });
+    } else {
+      this.entries.set(config.id, { info: { ...base, problem: `tipe "${config.type}" tidak dikenal` } });
       return;
     }
-
-    const provider = new StockfishProvider({
-      id: config.id,
-      label: config.label,
-      path: binary,
-      options: config.options,
-      defaults: config.defaults,
-      debug,
-    });
 
     try {
       await provider.init();
