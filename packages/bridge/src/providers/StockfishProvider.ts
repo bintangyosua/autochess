@@ -15,7 +15,7 @@ export interface StockfishProviderConfig {
   label: string;
   path: string;
   options?: Record<string, string | number | boolean>;
-  defaults?: { movetimeMs?: number; depth?: number; multipv?: number };
+  defaults?: { movetimeMs?: number; depth?: number; nodes?: number; multipv?: number };
   debug?: boolean;
 }
 
@@ -142,10 +142,20 @@ export class StockfishProvider implements EngineProvider {
 
 function buildGoCommand(
   req: AnalysisRequest,
-  defaults?: { movetimeMs?: number; depth?: number },
+  defaults?: { movetimeMs?: number; depth?: number; nodes?: number },
 ): { goCommand: string; timeoutMs: number } {
+  // Apa pun yang diminta per-analisis menang atas seluruh defaults — kalau tidak,
+  // permintaan `movetimeMs` eksplisit akan diam-diam dibajak oleh `defaults.depth`.
+  // Baru setelah itu defaults dipakai, dengan urutan depth > nodes > movetime.
   if (req.depth !== undefined) return { goCommand: `go depth ${req.depth}`, timeoutMs: 120_000 };
   if (req.nodes !== undefined) return { goCommand: `go nodes ${req.nodes}`, timeoutMs: 120_000 };
+
+  if (req.movetimeMs === undefined) {
+    if (defaults?.depth !== undefined)
+      return { goCommand: `go depth ${defaults.depth}`, timeoutMs: 120_000 };
+    if (defaults?.nodes !== undefined)
+      return { goCommand: `go nodes ${defaults.nodes}`, timeoutMs: 120_000 };
+  }
 
   const movetime = req.movetimeMs ?? defaults?.movetimeMs ?? 800;
   // Beri kelonggaran: engine baru mengirim bestmove sedikit setelah movetime habis.

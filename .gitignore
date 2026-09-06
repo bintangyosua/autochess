@@ -13,8 +13,7 @@ coverage/
 # Semuanya hasil download, bukan kode proyek ini, dan ukurannya besar
 # (stockfish.exe sendiri ~99 MB). engines.config.json yang menunjuk ke sini
 # tetap ikut ter-commit, jadi orang lain cukup menaruh filenya sesuai README.
-stockfish/
-engines/
+models/
 *.pb.gz
 *.nnue
 *.exe

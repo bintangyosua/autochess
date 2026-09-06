@@ -1,5 +1,5 @@
 {
-  "$comment": "Satu-satunya sumber konfigurasi engine. Ekstensi mengambil daftar ini dari bridge, termasuk label, warna panah, dan defaults — tidak ada daftar engine kedua di sisi UI. type lc0 punya dua mode: \"policy\" (go nodes 1, meniru manusia = Maia) dan \"search\" (pencarian penuh = Leela).",
+  "$comment": "Satu-satunya sumber konfigurasi engine. Ekstensi mengambil daftar ini dari bridge, termasuk label, warna panah, dan defaults — tidak ada daftar engine kedua di sisi UI. defaults menerima depth, nodes, atau movetimeMs — dipakai dengan prioritas depth > nodes > movetimeMs (mode policy selalu nodes). type lc0 punya dua mode: \"policy\" (go nodes 1, meniru manusia = Maia) dan \"search\" (pencarian penuh = Leela).",
   "engines": [
     {
       "id": "stockfish",
@@ -7,14 +7,14 @@
       "kind": "strength",
       "type": "stockfish",
       "enabled": true,
-      "path": "stockfish/stockfish-windows-x86-64-universal.exe",
+      "path": "models/stockfish/stockfish-windows-x86-64-universal.exe",
       "options": {
         "Threads": 2,
         "Hash": 256
       },
       "defaults": {
-        "movetimeMs": 800,
-        "multipv": 10
+        "depth": 7,
+        "multipv": 3
       },
       "color": "#2563eb"
     },
@@ -24,11 +24,11 @@
       "kind": "strength",
       "type": "lc0",
       "mode": "search",
-      "enabled": true,
-      "path": "lc0/lc0.exe",
-      "weights": "lc0/791556.pb.gz",
+      "enabled": false,
+      "path": "models/lc0/lc0.exe",
+      "weights": "models/lc0/791556.pb.gz",
       "defaults": {
-        "movetimeMs": 800,
+        "depth": 18,
         "multipv": 3
       },
       "color": "#16a34a"
@@ -39,8 +39,8 @@
       "kind": "human-like",
       "type": "lc0",
       "enabled": true,
-      "path": "lc0/lc0.exe",
-      "weights": "maia-1900.pb.gz",
+      "path": "models/lc0/lc0.exe",
+      "weights": "models/maia-1900.pb.gz",
       "defaults": {
         "nodes": 1,
         "multipv": 3
@@ -54,8 +54,8 @@
       "kind": "human-like",
       "type": "lc0",
       "enabled": false,
-      "path": "lc0/lc0.exe",
-      "weights": "maia-1500.pb.gz",
+      "path": "models/lc0/lc0.exe",
+      "weights": "models/maia-1500.pb.gz",
       "defaults": {
         "nodes": 1,
         "multipv": 3
@@ -69,8 +69,8 @@
       "kind": "human-like",
       "type": "lc0",
       "enabled": false,
-      "path": "lc0/lc0.exe",
-      "weights": "maia-1300.pb.gz",
+      "path": "models/lc0/lc0.exe",
+      "weights": "models/maia-1300.pb.gz",
       "defaults": {
         "nodes": 1,
         "multipv": 3

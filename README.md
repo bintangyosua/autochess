@@ -8,8 +8,10 @@ Rancangan lengkap ada di [PLAN.md](PLAN.md).
 
 ## Prasyarat
 - Node 20+ dan pnpm
-- `stockfish/stockfish-windows-x86-64-universal.exe` (sudah ada)
-- `lc0/lc0.exe` beserta DLL-nya (dari release LeelaChessZero/lc0) — dipakai Maia dan Leela.
+- Binari dan bobot engine ditaruh di `models/` (tidak ikut ter-commit; lihat `engines.config.json`):
+  - `models/stockfish/stockfish-windows-x86-64-universal.exe`
+  - `models/lc0/lc0.exe` beserta DLL-nya (dari release LeelaChessZero/lc0) — dipakai Maia dan Leela
+  - `models/lc0/791556.pb.gz` (Leela) dan `models/maia-1900.pb.gz` (+1500, +1300)
 
 ## Jalankan
 

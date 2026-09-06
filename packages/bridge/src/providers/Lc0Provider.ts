@@ -30,7 +30,7 @@ export interface Lc0ProviderConfig {
   /** Path ke bobot .pb.gz. */
   weights: string;
   mode: Lc0Mode;
-  defaults?: { nodes?: number; movetimeMs?: number; multipv?: number };
+  defaults?: { nodes?: number; depth?: number; movetimeMs?: number; multipv?: number };
   debug?: boolean;
 }
 
@@ -195,12 +195,9 @@ export class Lc0Provider implements EngineProvider {
       proc.send('ucinewgame');
       proc.send(`position fen ${req.fen}`);
 
-      const movetime = req.movetimeMs ?? this.config.defaults?.movetimeMs ?? 800;
-      const finished = proc.waitFor(
-        (line) => parseBestmove(line),
-        timeoutOverrideMs ?? movetime + 15_000,
-      );
-      proc.send(`go movetime ${movetime}`);
+      const { goCommand, timeoutMs } = buildSearchGo(req, this.config.defaults);
+      const finished = proc.waitFor((line) => parseBestmove(line), timeoutOverrideMs ?? timeoutMs);
+      proc.send(goCommand);
       const bestmove = await finished;
 
       const result = snapshot(false);
@@ -225,4 +222,27 @@ export class Lc0Provider implements EngineProvider {
     await this.proc?.dispose();
     this.proc = undefined;
   }
+}
+
+/**
+ * Sama seperti di StockfishProvider: request per-analisis menang penuh atas defaults
+ * (warm-up mengirim movetimeMs eksplisit dan tidak boleh ikut terseret ke `go depth`),
+ * lalu defaults dengan urutan depth > nodes > movetime.
+ */
+function buildSearchGo(
+  req: AnalysisRequest,
+  defaults?: { movetimeMs?: number; depth?: number; nodes?: number },
+): { goCommand: string; timeoutMs: number } {
+  if (req.depth !== undefined) return { goCommand: `go depth ${req.depth}`, timeoutMs: 120_000 };
+  if (req.nodes !== undefined) return { goCommand: `go nodes ${req.nodes}`, timeoutMs: 120_000 };
+
+  if (req.movetimeMs === undefined) {
+    if (defaults?.depth !== undefined)
+      return { goCommand: `go depth ${defaults.depth}`, timeoutMs: 120_000 };
+    if (defaults?.nodes !== undefined)
+      return { goCommand: `go nodes ${defaults.nodes}`, timeoutMs: 120_000 };
+  }
+
+  const movetime = req.movetimeMs ?? defaults?.movetimeMs ?? 800;
+  return { goCommand: `go movetime ${movetime}`, timeoutMs: movetime + 15_000 };
 }

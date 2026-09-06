@@ -45,10 +45,10 @@ Alternatif kalau nanti mau zero-install: `chrome.runtime.connectNative` (Native 
 
 ```
 chess/
-|- engines/                     # binari & bobot (gitignored)
+|- models/                      # binari & bobot (gitignored)
 |  |- stockfish/stockfish-windows-x86-64-universal.exe
-|  |- lc0/lc0.exe               # BELUM ADA -> lihat bagian 4
-|  |- weights/maia-1900.pb.gz (+1500, +1300)
+|  |- lc0/lc0.exe (+ DLL) dan lc0/791556.pb.gz
+|  |- maia-1900.pb.gz (+1500, +1300)
 |- packages/
 |  |- shared/                   # protokol WS, tipe Provider, tipe Analysis
 |  |- bridge/
