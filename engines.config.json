@@ -1,0 +1,35 @@
+{
+  "$comment": "Path relatif terhadap root repo. Tambah Maia 1500/1300 cukup dengan menyalin entri maia-1900 dan mengganti weights + id.",
+  "engines": [
+    {
+      "id": "stockfish",
+      "label": "Stockfish 19",
+      "kind": "strength",
+      "type": "stockfish",
+      "enabled": true,
+      "path": "stockfish/stockfish-windows-x86-64-universal.exe",
+      "options": {
+        "Threads": 2,
+        "Hash": 256
+      },
+      "defaults": {
+        "movetimeMs": 800,
+        "multipv": 3
+      }
+    },
+    {
+      "id": "maia-1900",
+      "label": "Maia 1900",
+      "kind": "human-like",
+      "type": "lc0",
+      "enabled": false,
+      "$enabledNote": "set true setelah engines/lc0/lc0.exe tersedia",
+      "path": "engines/lc0/lc0.exe",
+      "weights": "maia-1900.pb.gz",
+      "defaults": {
+        "nodes": 1,
+        "multipv": 3
+      }
+    }
+  ]
+}

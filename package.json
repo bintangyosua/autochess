@@ -1,0 +1,17 @@
+{
+  "name": "chess-move-reader",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bridge": "pnpm --filter @cmr/bridge dev",
+    "bridge:probe": "pnpm --filter @cmr/bridge probe",
+    "dev": "pnpm --filter @cmr/extension dev",
+    "build": "pnpm --filter @cmr/extension build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@11.24.0"
+}

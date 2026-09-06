@@ -1,0 +1,26 @@
+{
+  "name": "@cmr/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "postinstall": "wxt prepare",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cmr/shared": "workspace:*",
+    "chess.js": "^1.4.0"
+  },
+  "devDependencies": {
+    "@wxt-dev/module-svelte": "^2.0.5",
+    "svelte": "^5.57.0",
+    "svelte-check": "^4.1.1",
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.0",
+    "wxt": "^0.21.4"
+  }
+}

@@ -1,0 +1,39 @@
+# Dependensi
+node_modules/
+.pnpm-store/
+
+# Hasil build
+dist/
+.output/
+.wxt/
+coverage/
+*.tsbuildinfo
+
+# Engine: binari, bobot, dan source upstream.
+# Semuanya hasil download, bukan kode proyek ini, dan ukurannya besar
+# (stockfish.exe sendiri ~99 MB). engines.config.json yang menunjuk ke sini
+# tetap ikut ter-commit, jadi orang lain cukup menaruh filenya sesuai README.
+stockfish/
+engines/
+*.pb.gz
+*.nnue
+*.exe
+
+# Log & berkas sementara
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Konfigurasi lokal / rahasia
+.env
+.env.*
+!.env.example
+*.local
+
+# Editor & OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+desktop.ini
