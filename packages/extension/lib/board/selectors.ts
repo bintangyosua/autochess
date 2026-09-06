@@ -21,6 +21,21 @@ export const FLIPPED_CLASS = 'flipped';
  */
 export const HIGHLIGHT_SELECTOR = '.highlight';
 
+/**
+ * Tanda pengguna sedang memegang atau memilih bidak.
+ *
+ * Ini penting karena chess.com memakai kelas `.highlight` yang sama untuk kotak langkah
+ * terakhir DAN untuk kotak bidak yang sedang dipilih. Begitu kamu mengangkat bidak,
+ * sorotannya jadi tiga kotak, inferensi giliran kehilangan pola "dua sorot, satu terisi",
+ * dan giliran jatuh ke tebakan. Jadi selama interaksi berlangsung papan tidak dibaca
+ * ulang sama sekali — lagi pula posisinya memang belum berubah.
+ */
+export const INTERACTION_SELECTOR = '.hint, .capture-hint, .dragging';
+
+export function isInteracting(board: Element): boolean {
+  return board.querySelector(INTERACTION_SELECTOR) !== null;
+}
+
 const SQUARE_CLASS = /^square-([1-8])([1-8])$/;
 
 export function readHighlights(board: Element): { file: number; rank: number }[] {

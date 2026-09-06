@@ -1,4 +1,10 @@
-import { PIECE_SELECTOR, findBoard, readHighlights, readOrientation } from './selectors';
+import {
+  PIECE_SELECTOR,
+  findBoard,
+  isInteracting,
+  readHighlights,
+  readOrientation,
+} from './selectors';
 import { parsePieceClasses, type BoardParseResult } from './parsePieces';
 import { buildFenFromDom, type Highlight } from './inferState';
 
@@ -12,6 +18,8 @@ export interface BoardSnapshot extends BoardParseResult {
   assumptions: string[];
   /** false kalau giliran hanya tebakan. */
   turnKnown: boolean;
+  /** true kalau pengguna sedang memegang/memilih bidak; pembacaan tidak bisa dipercaya. */
+  interacting: boolean;
 }
 
 export function readBoard(root: ParentNode = document): BoardSnapshot | undefined {
@@ -22,11 +30,48 @@ export function readBoard(root: ParentNode = document): BoardSnapshot | undefine
   const parsed = parsePieceClasses(classLists);
   const highlights = readHighlights(board);
   const orientation = readOrientation(board);
+  const interacting = isInteracting(board);
 
-  if (!parsed.fenBoard) return { ...parsed, orientation, highlights, assumptions: [], turnKnown: false };
+  if (!parsed.fenBoard) {
+    return { ...parsed, orientation, highlights, assumptions: [], turnKnown: false, interacting };
+  }
 
   const { fen, assumptions, turnKnown } = buildFenFromDom(parsed.pieces, highlights);
-  return { ...parsed, orientation, highlights, fen, assumptions, turnKnown };
+  return { ...parsed, orientation, highlights, fen, assumptions, turnKnown, interacting };
+}
+
+/** Bagian snapshot yang menentukan diterima atau tidaknya sebuah pembacaan. */
+export interface AcceptInput {
+  fen?: string;
+  fenBoard?: string;
+  turnKnown: boolean;
+  interacting: boolean;
+}
+
+/**
+ * Layak tidaknya sebuah pembacaan dikirim ke engine.
+ *
+ * Dipisah jadi fungsi murni supaya tiga aturan di bawah bisa diuji tanpa DOM — dan
+ * ketiganya berasal dari kesalahan nyata yang pernah terjadi, bukan kehati-hatian
+ * spekulatif.
+ */
+export function shouldAccept(
+  snapshot: AcceptInput,
+  last: { lastFen?: string; lastBoard?: string },
+): boolean {
+  // 1. Bidak sedang dipegang: kotak asalnya ikut tersorot sehingga giliran salah baca.
+  //    Posisinya sendiri belum berubah, jadi tidak ada yang hilang dengan menunggu.
+  if (snapshot.interacting) return false;
+
+  // 2. Papan belum konsisten (fen kosong), atau posisinya memang belum berubah.
+  if (!snapshot.fen || snapshot.fen === last.lastFen) return false;
+
+  // 3. Susunan bidak sama persis tapi giliran cuma tebakan. Berarti yang berubah
+  //    hanyalah sorotan, bukan posisinya — menerimanya sama saja meminta engine
+  //    menganalisis untuk sisi yang salah.
+  if (!snapshot.turnKnown && snapshot.fenBoard === last.lastBoard) return false;
+
+  return true;
 }
 
 export interface WatchOptions {
@@ -55,6 +100,8 @@ export interface WatchOptions {
 export function watchBoard(options: WatchOptions): () => void {
   const { debounceMs = 120, maxWaitMs = 600, pollMs = 1_000, onChange, onBoardMissing } = options;
   let lastFen: string | undefined;
+  /** Susunan bidak dari pembacaan terakhir yang diterima, tanpa field giliran dsb. */
+  let lastBoard: string | undefined;
   let missingReported = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** Kapan rentetan mutasi yang sedang ditunda ini dimulai; undefined = tidak ada. */
@@ -73,10 +120,10 @@ export function watchBoard(options: WatchOptions): () => void {
     }
     missingReported = false;
 
-    // Selama papan belum konsisten (bidak sedang di-drag, animasi belum selesai)
-    // fen sengaja kosong — jangan kirim apa pun ke engine.
-    if (!snapshot.fen || snapshot.fen === lastFen) return;
+    if (!shouldAccept(snapshot, { lastFen, lastBoard })) return;
+
     lastFen = snapshot.fen;
+    lastBoard = snapshot.fenBoard;
     onChange(snapshot);
   };
 

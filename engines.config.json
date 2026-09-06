@@ -13,7 +13,7 @@
         "Hash": 256
       },
       "defaults": {
-        "depth": 4,
+        "depth": 7,
         "multipv": 3
       },
       "color": "#2563eb"
@@ -30,7 +30,7 @@
         "Hash": 256
       },
       "defaults": {
-        "depth": 4,
+        "depth": 6,
         "multipv": 3
       },
       "color": "#7c3aed"
@@ -47,7 +47,7 @@
         "Hash": 256
       },
       "defaults": {
-        "depth": 4,
+        "depth": 5,
         "multipv": 3
       },
       "color": "#0891b2"
@@ -72,7 +72,7 @@
       "label": "Maia 1900",
       "kind": "human-like",
       "type": "lc0",
-      "enabled": true,
+      "enabled": false,
       "path": "models/lc0/lc0.exe",
       "weights": "models/maia-1900.pb.gz",
       "defaults": {

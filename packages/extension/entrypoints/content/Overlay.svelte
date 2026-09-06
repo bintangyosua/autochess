@@ -22,34 +22,60 @@
     key: string;
     x1: number; y1: number; x2: number; y2: number;
     color: string; width: number; opacity: number;
+    /** Kosong = garis penuh. Diisi hanya untuk panah balasan. */
+    dash: string;
+    head: number;
+  }
+
+  function buildArrow(key: string, uci: string, view: ProviderView, reply: boolean): Arrow {
+    const from = toXY(uci.slice(0, 2));
+    const to = toXY(uci.slice(2, 4));
+    // Pendekkan ujung panah supaya kepalanya berhenti di tepi kotak tujuan,
+    // bukan menutupi bidak yang ada di sana.
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const trim = 0.3;
+    const width = view.kind === 'strength' ? 0.13 : 0.1;
+    const opacity = view.kind === 'strength' ? 0.9 : 0.75;
+    return {
+      key,
+      x1: from.x, y1: from.y,
+      x2: to.x - (dx / len) * trim,
+      y2: to.y - (dy / len) * trim,
+      color: view.color,
+      width: reply ? width * 0.55 : width,
+      opacity: reply ? opacity * 0.45 : opacity,
+      dash: reply ? '0.17 0.13' : '',
+      head: reply ? 2.6 : 3.2,
+    };
   }
 
   /**
-   * Hanya langkah terbaik tiap provider yang digambar. Menggambar tiga panah per
-   * provider membuat papan tidak terbaca; peringkat selengkapnya ada di panel.
+   * Per provider digambar dua panah: langkah terbaik untuk sisi yang jalan, dan —
+   * kalau ada — balasan terbaik atas langkah itu.
+   *
+   * Panah balasan diambil dari langkah kedua principal variation, jadi tidak menambah
+   * beban engine sama sekali. Gunanya paling terasa saat giliran lawan: kalau lawan
+   * benar-benar memainkan langkah terbaiknya, panah putus-putus itulah jawaban yang
+   * bisa kamu premove.
+   *
+   * Perhatikan bahwa panah ini bersyarat. Begitu lawan memainkan langkah lain, balasan
+   * itu belum tentu masih yang terbaik — karena itu digambar tipis dan putus-putus,
+   * bukan sekuat panah utama.
+   *
+   * Maia tidak pernah menghasilkannya: mode policy hanya menghitung satu node, jadi
+   * tidak ada PV, dan `pv?.[1]` di bawah otomatis kosong tanpa perlu pengecualian.
    */
   const arrows = $derived<Arrow[]>(
     Object.entries(overlay.providers).flatMap(([id, view]) => {
       const best = view.suggestions[0];
       if (!best || !view.arrowVisible) return [];
 
-      const from = toXY(best.uci.slice(0, 2));
-      const to = toXY(best.uci.slice(2, 4));
-      // Pendekkan ujung panah supaya kepalanya berhenti di tepi kotak tujuan,
-      // bukan menutupi bidak yang ada di sana.
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const len = Math.hypot(dx, dy) || 1;
-      const trim = 0.3;
-      return [{
-        key: id,
-        x1: from.x, y1: from.y,
-        x2: to.x - (dx / len) * trim,
-        y2: to.y - (dy / len) * trim,
-        color: view.color,
-        width: view.kind === 'strength' ? 0.13 : 0.1,
-        opacity: view.kind === 'strength' ? 0.9 : 0.75,
-      }];
+      const out = [buildArrow(id, best.uci, view, false)];
+      const reply = best.pv?.[1];
+      if (reply) out.push(buildArrow(`${id}-reply`, reply, view, true));
+      return out;
     }),
   );
 
@@ -82,8 +108,8 @@
             viewBox="0 0 10 10"
             refX="8"
             refY="5"
-            markerWidth="3.2"
-            markerHeight="3.2"
+            markerWidth={arrow.head}
+            markerHeight={arrow.head}
             orient="auto-start-reverse"
           >
             <path d="M 0 0 L 10 5 L 0 10 z" fill={arrow.color} opacity={arrow.opacity} />
@@ -97,6 +123,7 @@
           stroke={arrow.color}
           stroke-width={arrow.width}
           stroke-linecap="round"
+          stroke-dasharray={arrow.dash}
           opacity={arrow.opacity}
           marker-end="url(#head-{arrow.key})"
         />

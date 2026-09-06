@@ -14,6 +14,13 @@ import {
   syncProviders,
 } from '../../lib/overlayState.svelte';
 import { isRuntimeMessage, type StatusReply } from '../../lib/messages';
+import {
+  DEPTH_KEY,
+  loadDepths,
+  readDepthChange,
+  supportsDepth,
+  type DepthOverrides,
+} from '../../lib/settings';
 
 /** Kunci storage untuk daftar engine yang panahnya ditampilkan. */
 const ARROWS_KEY = 'visibleArrows';
@@ -25,9 +32,17 @@ const PANEL_KEY = 'panelVisible';
  * Daftar engine, label, warna, dan setelan analisis semuanya berasal dari
  * `engines.config.json` lewat bridge. Tidak ada daftar engine kedua di sini — mengubah
  * engine cukup di satu berkas, dan permintaan analisis sengaja tidak menyertakan
- * movetime/multipv supaya `defaults` di berkas itu yang berlaku.
+ * movetime/multipv supaya `defaults` di berkas itu yang berlaku. Satu-satunya nilai yang
+ * bisa ditimpa dari UI adalah depth, lewat halaman pengaturan.
  */
 let engines: ProviderInfo[] = [];
+
+/**
+ * Depth pilihan pengguna dari halaman pengaturan, id engine -> depth. Hanya dikirim
+ * untuk engine yang punya entri di sini; sisanya dibiarkan memakai `defaults` di
+ * `engines.config.json` supaya tetap ada satu sumber nilai bawaan.
+ */
+let depths: DepthOverrides = {};
 
 /**
  * Chess.com adalah SPA: saat content script jalan, papan sering belum ada di DOM.
@@ -67,6 +82,7 @@ export default defineContentScript({
     const isVisible = (id: string) => (Array.isArray(visible) ? visible.includes(id) : true);
     // Default-nya tampil; hanya `false` eksplisit yang menyembunyikan.
     overlay.panelVisible = stored[PANEL_KEY] !== false;
+    depths = await loadDepths();
 
     const applyProviders = (list: ProviderInfo[]) => {
       // Hanya engine yang siap yang dianalisis; yang dimatikan di config tidak muncul.
@@ -100,6 +116,10 @@ export default defineContentScript({
 
       const panel = changes[PANEL_KEY]?.newValue;
       if (typeof panel === 'boolean') overlay.panelVisible = panel;
+
+      // Depth yang berubah baru berlaku pada analisis berikutnya; posisi yang sedang
+      // dihitung sengaja tidak diulang supaya menggeser slider tidak membanjiri bridge.
+      if (DEPTH_KEY in changes) depths = readDepthChange(changes[DEPTH_KEY]?.newValue);
     });
 
     const board = await waitForBoard(ctx.signal);
@@ -223,6 +243,13 @@ export default defineContentScript({
      * bangun sering gagal karena WebSocket ke bridge belum tersambung ulang — dan tanpa
      * percobaan kedua, papan akan diam tanpa saran sampai langkah berikutnya.
      */
+    /** Depth hanya relevan untuk engine pencari; mode policy diabaikan. */
+    function depthFor(providerId: string): number | undefined {
+      const engine = engines.find((e) => e.id === providerId);
+      if (!engine || !supportsDepth(engine.kind)) return undefined;
+      return depths[engine.id];
+    }
+
     function requestAnalysis(providerId: string, fen: string, attempt = 1): void {
       void browser.runtime
         .sendMessage({
@@ -230,6 +257,7 @@ export default defineContentScript({
           reqId: `r${++reqId}`,
           providerId,
           fen,
+          depth: depthFor(providerId),
         })
         .then((reply) => {
           const ok = (reply as { ok?: boolean } | undefined)?.ok;

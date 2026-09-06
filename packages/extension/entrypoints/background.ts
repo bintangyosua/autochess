@@ -75,6 +75,7 @@ export default defineBackground(() => {
         providerId: raw.providerId,
         fen: raw.fen,
         movetimeMs: raw.movetimeMs,
+        depth: raw.depth,
         multipv: raw.multipv,
       });
       if (!ok) requesters.delete(raw.reqId);

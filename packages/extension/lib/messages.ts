@@ -9,6 +9,8 @@ export type RuntimeMessage =
       providerId: string;
       fen: string;
       movetimeMs?: number;
+      /** Override depth dari halaman pengaturan; kalau kosong, `defaults` bridge yang berlaku. */
+      depth?: number;
       multipv?: number;
     }
   | { type: 'status' }
