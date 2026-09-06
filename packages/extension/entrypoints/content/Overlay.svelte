@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { overlay, toggleArrow, type ProviderView } from '../../lib/overlayState.svelte';
+  import {
+    overlay,
+    toggleArrow,
+    togglePanel,
+    type ProviderView,
+  } from '../../lib/overlayState.svelte';
 
   /**
    * Papan digambar sebagai grid 8x8 lewat viewBox, jadi koordinat panah ditulis dalam
@@ -98,50 +103,71 @@
       {/each}
     </svg>
 
-    <div class="panel">
-      {#each views as [id, view] (id)}
-        <section class:muted={!view.arrowVisible}>
-          <button
-            type="button"
-            class="head"
-            aria-pressed={view.arrowVisible}
-            title={view.arrowVisible ? 'Sembunyikan panah' : 'Tampilkan panah'}
-            onclick={() => toggleArrow(id)}
-          >
-            <span
-              class="swatch"
-              style={view.arrowVisible
-                ? `background:${view.color}; border-color:${view.color}`
-                : `background:transparent; border-color:${view.color}`}
-            ></span>
-            <strong>{view.label}</strong>
-            {#if view.depth}<span class="dim">d{view.depth}</span>{/if}
-            {#if view.status === 'thinking'}<span class="dim">...</span>{/if}
-          </button>
+    <!--
+      Tombolnya ikut di dalam panel dan tetap ada saat isinya disembunyikan, supaya
+      selalu ada jalan untuk mengembalikannya tanpa membuka menu ekstensi.
+    -->
+    <div class="panel" class:collapsed={!overlay.panelVisible}>
+      <div class="bar">
+        {#if overlay.panelVisible}<span class="dim">analisis</span>{/if}
+        <button
+          type="button"
+          class="toggle"
+          aria-pressed={overlay.panelVisible}
+          title={overlay.panelVisible
+            ? 'Sembunyikan data (panah tetap tampil)'
+            : 'Tampilkan data analisis'}
+          onclick={togglePanel}
+        >
+          {overlay.panelVisible ? '×' : 'i'}
+        </button>
+      </div>
 
-          {#if view.suggestions.length > 0}
-            <!-- Tampilkan semua yang dikirim engine; jumlahnya diatur lewat `multipv`
-                 per provider di content script, bukan dipotong di sini. -->
-            <ol>
-              {#each view.suggestions as s, i (s.uci)}
-                <li class:best={i === 0}>
-                  <span class="move">{s.san ?? s.uci}</span>
-                  <span class="score">{scoreText(s, view.kind)}</span>
-                </li>
-              {/each}
-            </ol>
-          {:else}
-            <p class="dim">{overlay.note || '—'}</p>
-          {/if}
-        </section>
-      {:else}
-        <p class="dim">menunggu posisi...</p>
-      {/each}
+      {#if overlay.panelVisible}
+        {#each views as [id, view] (id)}
+          <section class:muted={!view.arrowVisible}>
+            <button
+              type="button"
+              class="head"
+              aria-pressed={view.arrowVisible}
+              title={view.arrowVisible ? 'Sembunyikan panah' : 'Tampilkan panah'}
+              onclick={() => toggleArrow(id)}
+            >
+              <span
+                class="swatch"
+                style={view.arrowVisible
+                  ? `background:${view.color}; border-color:${view.color}`
+                  : `background:transparent; border-color:${view.color}`}
+              ></span>
+              <strong>{view.label}</strong>
+              {#if view.depth}<span class="dim">d{view.depth}</span>{/if}
+              {#if view.status === 'thinking'}<span class="dim">...</span>{/if}
+            </button>
 
-      <!-- Hak rokade memang selalu ditebak sampai move list terbaca; itu normal dan
-           tidak perlu diperingatkan. Yang berbahaya adalah giliran yang salah baca. -->
-      {#if !overlay.turnKnown}
-        <p class="warn" title={overlay.assumptions.join('\n')}>giliran ditebak</p>
+            {#if view.suggestions.length > 0}
+              <!-- Tampilkan semua yang dikirim engine; jumlahnya diatur lewat `multipv`
+                   per provider di content script, bukan dipotong di sini. -->
+              <ol>
+                {#each view.suggestions as s, i (s.uci)}
+                  <li class:best={i === 0}>
+                    <span class="move">{s.san ?? s.uci}</span>
+                    <span class="score">{scoreText(s, view.kind)}</span>
+                  </li>
+                {/each}
+              </ol>
+            {:else}
+              <p class="dim">{overlay.note || '—'}</p>
+            {/if}
+          </section>
+        {:else}
+          <p class="dim">menunggu posisi...</p>
+        {/each}
+
+        <!-- Hak rokade memang selalu ditebak sampai move list terbaca; itu normal dan
+             tidak perlu diperingatkan. Yang berbahaya adalah giliran yang salah baca. -->
+        {#if !overlay.turnKnown}
+          <p class="warn" title={overlay.assumptions.join('\n')}>giliran ditebak</p>
+        {/if}
       {/if}
     </div>
   </div>
@@ -181,6 +207,35 @@
     font: 11.5px/1.4 system-ui, sans-serif;
     backdrop-filter: blur(2px);
   }
+  /* Saat terlipat, panel menyusut jadi sekadar tombol supaya papan hampir tidak
+     tertutup sama sekali — dan sengaja dibuat redup agar tidak menarik perhatian. */
+  .panel.collapsed {
+    min-width: 0;
+    padding: 2px;
+    background: rgba(24, 24, 27, 0.55);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .panel:not(.collapsed) .bar { margin-bottom: 3px; }
+  .toggle {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #d4d4d8;
+    font: 600 11px/1 system-ui, sans-serif;
+    cursor: pointer;
+  }
+  .toggle:hover { background: rgba(255, 255, 255, 0.22); color: #fff; }
+  .toggle:focus-visible { outline: 1px solid #93c5fd; }
+
   section + section { margin-top: 5px; padding-top: 4px; border-top: 1px solid #3f3f46; }
   .head {
     display: flex;

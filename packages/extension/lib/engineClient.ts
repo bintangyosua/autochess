@@ -1,6 +1,5 @@
 import {
   DEFAULT_PORT,
-  PORT_SCAN_END,
   PROTOCOL_VERSION,
   isServerMessage,
   type AnalysisResult,
@@ -19,18 +18,21 @@ export interface EngineClientEvents {
   onError?: (reqId: string | undefined, code: string, message: string) => void;
 }
 
-/** Jeda antar-port saat menyapu rentang; sapuan penuh harus cepat, bukan bertahap. */
-const PORT_STEP_MS = 250;
 const RECONNECT_MIN_MS = 1_000;
 const RECONNECT_MAX_MS = 15_000;
 
 /**
- * Koneksi ke bridge lokal. Bridge memindai port kalau 8787 terpakai, jadi klien
- * ikut memindai rentang yang sama sampai ada yang menjawab.
+ * Koneksi ke bridge lokal, selalu ke DEFAULT_PORT dan tidak ke mana-mana lagi.
+ *
+ * Dulu klien ini menyapu rentang port kalau sambungan gagal, meniru bridge yang bisa
+ * pindah port. Hasilnya lebih membingungkan daripada menolong: penyebab kegagalan yang
+ * hampir selalu benar — bridge belum dijalankan — jadi tersamar sebagai deretan
+ * "menyambung port 8788, 8789, ..." selama beberapa detik sebelum akhirnya menyerah.
+ * Sekarang bridge juga menolak pindah port, jadi satu port ini definitif.
  */
 export class EngineClient {
   private socket?: WebSocket;
-  private port = DEFAULT_PORT;
+  private readonly port = DEFAULT_PORT;
   private backoffMs = RECONNECT_MIN_MS;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private closedByUs = false;
@@ -51,7 +53,9 @@ export class EngineClient {
   }
 
   private openSocket(): void {
-    this.setState('connecting', `port ${this.port}`);
+    // Tanpa detail port: nomornya tidak pernah berubah, jadi menampilkannya hanya
+    // menyisakan kesan bahwa ada sesuatu yang sedang dicari-cari.
+    this.setState('connecting');
     const socket = new WebSocket(`ws://127.0.0.1:${this.port}`);
     this.socket = socket;
 
@@ -75,18 +79,9 @@ export class EngineClient {
       if (this.closedByUs) return;
       this.providers = [];
 
-      // Sapu seluruh rentang port dengan cepat, baru menunggu lama setelah satu sapuan
-      // penuh gagal. Kalau tiap port memakai backoff eksponensial, kembali ke 8787 —
-      // tempat bridge biasanya berada — bisa makan lebih dari satu menit.
-      if (this.port < PORT_SCAN_END) {
-        this.port += 1;
-        this.setState('connecting', `mencoba port ${this.port}`);
-        this.reconnectIn(PORT_STEP_MS);
-        return;
-      }
-
-      this.port = DEFAULT_PORT;
-      this.setState('offline', 'bridge tidak merespons');
+      // Tidak ada yang mendengarkan di 8787 = bridge tidak jalan. Itu kesimpulan yang
+      // pasti, jadi katakan langsung pada kegagalan pertama alih-alih menunda vonis.
+      this.setState('offline', `tidak ada bridge di port ${DEFAULT_PORT}`);
       this.reconnectIn(this.backoffMs);
       this.backoffMs = Math.min(this.backoffMs * 2, RECONNECT_MAX_MS);
     };
@@ -105,7 +100,7 @@ export class EngineClient {
         break;
       case 'providers':
         this.providers = message.providers;
-        this.setState('connected', `port ${this.port}`);
+        this.setState('connected', `port ${DEFAULT_PORT}`);
         this.events.onProviders?.(message.providers);
         break;
       case 'partial':

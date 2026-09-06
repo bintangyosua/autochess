@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EngineProvider, ProviderInfo } from '@cmr/shared';
-import { StockfishProvider } from './StockfishProvider.js';
+import { UciEngineProvider } from './UciEngineProvider.js';
 import { Lc0Provider, type Lc0Mode } from './Lc0Provider.js';
 
 /** Root repo = tiga level di atas packages/bridge/src/providers. */
@@ -13,7 +13,11 @@ interface EngineConfigEntry {
   id: string;
   label: string;
   kind: 'strength' | 'human-like';
-  type: 'stockfish' | 'lc0';
+  /**
+   * 'uci' = engine UCI biasa (Stockfish, Komodo, Dragon). 'stockfish' dipertahankan
+   * sebagai nama lama yang artinya sama persis.
+   */
+  type: 'uci' | 'stockfish' | 'lc0';
   enabled?: boolean;
   path: string;
   weights?: string;
@@ -65,8 +69,8 @@ export class ProviderRegistry {
     }
 
     let provider: EngineProvider;
-    if (config.type === 'stockfish') {
-      provider = new StockfishProvider({
+    if (config.type === 'uci' || config.type === 'stockfish') {
+      provider = new UciEngineProvider({
         id: config.id,
         label: config.label,
         path: binary,

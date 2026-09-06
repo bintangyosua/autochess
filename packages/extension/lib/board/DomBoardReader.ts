@@ -32,6 +32,18 @@ export function readBoard(root: ParentNode = document): BoardSnapshot | undefine
 export interface WatchOptions {
   /** Tunggu sejenak setelah perubahan terakhir; animasi chess.com memicu banyak mutasi. */
   debounceMs?: number;
+  /**
+   * Batas atas penundaan. Debounce murni bisa kelaparan: selama mutasi terus datang
+   * dengan jeda di bawah `debounceMs` — jam yang berjalan, iklan, animasi panel —
+   * timer-nya di-reset terus dan pembacaan tidak pernah jalan. Setelah tenggat ini
+   * terlampaui, baca paksa.
+   */
+  maxWaitMs?: number;
+  /**
+   * Jaring pengaman terakhir: baca ulang berkala walau tidak ada mutasi yang terpantau.
+   * Pembacaan yang posisinya sama berhenti di dedupe fen, jadi ini murah.
+   */
+  pollMs?: number;
   onChange: (snapshot: BoardSnapshot) => void;
   onBoardMissing?: () => void;
 }
@@ -41,12 +53,16 @@ export interface WatchOptions {
  * Mengembalikan fungsi untuk berhenti memantau.
  */
 export function watchBoard(options: WatchOptions): () => void {
-  const { debounceMs = 120, onChange, onBoardMissing } = options;
+  const { debounceMs = 120, maxWaitMs = 600, pollMs = 1_000, onChange, onBoardMissing } = options;
   let lastFen: string | undefined;
   let missingReported = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** Kapan rentetan mutasi yang sedang ditunda ini dimulai; undefined = tidak ada. */
+  let pendingSince: number | undefined;
 
   const evaluate = () => {
+    clearTimeout(timer);
+    pendingSince = undefined;
     const snapshot = readBoard();
     if (!snapshot) {
       if (!missingReported) {
@@ -65,6 +81,12 @@ export function watchBoard(options: WatchOptions): () => void {
   };
 
   const schedule = () => {
+    const now = Date.now();
+    if (pendingSince === undefined) pendingSince = now;
+    else if (now - pendingSince >= maxWaitMs) {
+      evaluate();
+      return;
+    }
     clearTimeout(timer);
     timer = setTimeout(evaluate, debounceMs);
   };
@@ -77,10 +99,12 @@ export function watchBoard(options: WatchOptions): () => void {
     attributeFilter: ['class'],
   });
 
+  const poll = setInterval(evaluate, pollMs);
   schedule();
 
   return () => {
     clearTimeout(timer);
+    clearInterval(poll);
     observer.disconnect();
   };
 }

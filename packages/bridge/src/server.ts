@@ -2,7 +2,6 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import {
   DEFAULT_PORT,
   HEARTBEAT_MS,
-  PORT_SCAN_END,
   PROTOCOL_VERSION,
   type ClientMessage,
   type ErrorCode,
@@ -20,7 +19,13 @@ if (ready.length === 0) {
   for (const p of registry.list()) console.error(`  - ${p.id}: ${p.problem ?? 'tidak diketahui'}`);
 }
 
-const wss = await listen();
+// Kegagalan bind adalah masalah operasional, bukan bug — cetak pesannya saja, jangan
+// menumpahkan stack trace yang menutupi instruksi perbaikannya.
+const wss = await listen().catch(async (err: Error) => {
+  console.error(`[bridge] ${err.message}`);
+  await registry.disposeAll();
+  process.exit(1);
+});
 console.log(`[bridge] siap di ws://127.0.0.1:${(wss.address() as { port: number }).port}`);
 console.log(`[bridge] provider: ${registry.list().map((p) => `${p.id}${p.ready ? '' : ' (off)'}`).join(', ')}`);
 
@@ -120,21 +125,28 @@ async function handle(
   }
 }
 
-/** Cari port bebas mulai dari DEFAULT_PORT. */
+/**
+ * Dengar di DEFAULT_PORT saja.
+ *
+ * Sebelumnya bridge pindah ke port berikutnya kalau 8787 terisi. Itu terdengar ramah,
+ * tapi hasilnya bridge yang hidup di tempat yang tidak dicari siapa pun — dan ekstensi
+ * cuma bisa menebak-nebak. Lebih baik gagal terang-terangan: port terisi hampir selalu
+ * berarti masih ada bridge lama yang jalan, dan itu yang perlu dimatikan.
+ */
 function listen(): Promise<WebSocketServer> {
   return new Promise((resolvePort, rejectPort) => {
-    const tryPort = (port: number) => {
-      if (port > PORT_SCAN_END) {
-        return rejectPort(new Error(`tidak ada port bebas di ${DEFAULT_PORT}-${PORT_SCAN_END}`));
-      }
-      const server = new WebSocketServer({ host: '127.0.0.1', port });
-      server.once('listening', () => resolvePort(server));
-      server.once('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EADDRINUSE') tryPort(port + 1);
-        else rejectPort(err);
-      });
-    };
-    tryPort(DEFAULT_PORT);
+    const server = new WebSocketServer({ host: '127.0.0.1', port: DEFAULT_PORT });
+    server.once('listening', () => resolvePort(server));
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      if (err.code !== 'EADDRINUSE') return rejectPort(err);
+      rejectPort(
+        new Error(
+          `port ${DEFAULT_PORT} sudah dipakai — kemungkinan besar bridge lain masih jalan.\n` +
+            `  Cek: netstat -ano | findstr :${DEFAULT_PORT}\n` +
+            `  Lalu hentikan prosesnya, atau tutup terminal bridge yang lama.`,
+        ),
+      );
+    });
   });
 }
 

@@ -10,7 +10,15 @@ import { parseBestmove } from '../uci/parseInfo.js';
 import { createMultiPvCollector } from '../uci/collectMultiPv.js';
 import { uciLineToSan } from '../san.js';
 
-export interface StockfishProviderConfig {
+/**
+ * Provider untuk engine UCI biasa: Stockfish, Komodo, Dragon, dan sejenisnya.
+ *
+ * Tidak ada satu pun perilaku khusus Stockfish di sini — yang dipakai hanyalah perintah
+ * UCI standar (`setoption`, `position fen`, `go`, `info ... multipv`), jadi engine mana
+ * pun yang bicara UCI cukup ditambahkan di engines.config.json tanpa kode baru.
+ */
+
+export interface UciEngineProviderConfig {
   id: string;
   label: string;
   path: string;
@@ -19,7 +27,7 @@ export interface StockfishProviderConfig {
   debug?: boolean;
 }
 
-export class StockfishProvider implements EngineProvider {
+export class UciEngineProvider implements EngineProvider {
   readonly kind: ProviderKind = 'strength';
   readonly id: string;
   readonly label: string;
@@ -30,7 +38,7 @@ export class StockfishProvider implements EngineProvider {
   private chain: Promise<unknown> = Promise.resolve();
   private running = false;
 
-  constructor(private readonly config: StockfishProviderConfig) {
+  constructor(private readonly config: UciEngineProviderConfig) {
     this.id = config.id;
     this.label = config.label;
   }
@@ -48,7 +56,8 @@ export class StockfishProvider implements EngineProvider {
   }
 
   /**
-   * Stockfish keluar begitu saja pada input yang tidak ia sukai (FEN invalid, misalnya),
+   * Engine UCI umumnya keluar begitu saja pada input yang tidak ia sukai (FEN invalid,
+   * misalnya),
    * dan proses yang mati akan membuat provider ini lumpuh permanen. Jadi hidupkan lagi
    * sebelum tiap analisis kalau perlu.
    */

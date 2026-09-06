@@ -40,6 +40,8 @@ pnpm bridge:probe -- --provider maia-1900 --debug
 | id | Model | Sifat |
 |---|---|---|
 | `stockfish` | Stockfish 19 | terkuat secara objektif |
+| `dragon` | Dragon (Komodo) | kuat, gaya lebih posisional |
+| `komodo` | Komodo 14.1 | kuat, generasi sebelum Dragon |
 | `leela` | Leela 791556 | kuat, gaya berbeda dari Stockfish |
 | `maia-1900` | Maia 1900 | meniru pemain manusia rating ~1900 |
 | `maia-1500`, `maia-1300` | Maia | terdaftar, tinggal `enabled: true` |
@@ -55,7 +57,9 @@ engine kedua di sisi UI, dan tidak ada kode yang perlu diubah.
 | `color` | warna panah dan penanda |
 | `enabled` | muncul di overlay atau tidak |
 | `defaults.multipv` | berapa langkah berperingkat ditampilkan |
-| `defaults.movetimeMs` | lama berpikir (mode search) |
+| `type` | `uci` untuk engine UCI biasa (Stockfish/Dragon/Komodo), `lc0` untuk Leela/Maia |
+| `defaults.depth` | kedalaman tetap; menang atas `nodes` dan `movetimeMs` |
+| `defaults.movetimeMs` | lama berpikir, dipakai kalau `depth`/`nodes` kosong |
 | `defaults.nodes` | jumlah node (Maia: 1) |
 
 `type: "lc0"` punya dua mode, memakai biner yang sama:

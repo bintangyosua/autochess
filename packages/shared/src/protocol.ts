@@ -3,6 +3,12 @@
 import type { AnalysisResult, ProviderInfo } from './provider.js';
 
 export const PROTOCOL_VERSION = 1;
+/**
+ * Satu-satunya port yang dipakai. Bridge tidak pindah kalau port ini terisi dan ekstensi
+ * tidak menyapu port lain: kalau tidak ada apa pun di sini, artinya bridge memang tidak
+ * jalan. Menyapu port membuat dua kegagalan yang sangat berbeda — bridge belum dijalankan
+ * versus bridge pindah tempat — jadi tidak bisa dibedakan, dan yang pertama jauh lebih sering.
+ */
 export const DEFAULT_PORT = 8787;
 
 /**
@@ -11,8 +17,6 @@ export const DEFAULT_PORT = 8787;
  * mengirim heartbeat di bawah ambang itu supaya koneksi bertahan selama ada yang memakai.
  */
 export const HEARTBEAT_MS = 20_000;
-/** Bridge akan mencoba port berurutan dari DEFAULT_PORT sampai PORT_SCAN_END. */
-export const PORT_SCAN_END = 8797;
 
 export type ClientMessage =
   | { type: 'hello'; version: number }

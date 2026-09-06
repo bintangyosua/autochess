@@ -1,11 +1,11 @@
 {
-  "$comment": "Satu-satunya sumber konfigurasi engine. Ekstensi mengambil daftar ini dari bridge, termasuk label, warna panah, dan defaults — tidak ada daftar engine kedua di sisi UI. defaults menerima depth, nodes, atau movetimeMs — dipakai dengan prioritas depth > nodes > movetimeMs (mode policy selalu nodes). type lc0 punya dua mode: \"policy\" (go nodes 1, meniru manusia = Maia) dan \"search\" (pencarian penuh = Leela).",
+  "$comment": "Satu-satunya sumber konfigurasi engine. Ekstensi mengambil daftar ini dari bridge, termasuk label, warna panah, dan defaults — tidak ada daftar engine kedua di sisi UI. defaults menerima depth, nodes, atau movetimeMs — dipakai dengan prioritas depth > nodes > movetimeMs (mode policy selalu nodes). type uci dipakai untuk engine UCI biasa (Stockfish, Dragon, Komodo) — tidak ada kode khusus per engine. type lc0 punya dua mode: \"policy\" (go nodes 1, meniru manusia = Maia) dan \"search\" (pencarian penuh = Leela).",
   "engines": [
     {
       "id": "stockfish",
       "label": "Stockfish 19",
       "kind": "strength",
-      "type": "stockfish",
+      "type": "uci",
       "enabled": true,
       "path": "models/stockfish/stockfish-windows-x86-64-universal.exe",
       "options": {
@@ -13,10 +13,44 @@
         "Hash": 256
       },
       "defaults": {
-        "depth": 7,
+        "depth": 4,
         "multipv": 3
       },
       "color": "#2563eb"
+    },
+    {
+      "id": "dragon",
+      "label": "Dragon",
+      "kind": "strength",
+      "type": "uci",
+      "enabled": true,
+      "path": "models/dragon/dragon-64bit.exe",
+      "options": {
+        "Threads": 2,
+        "Hash": 256
+      },
+      "defaults": {
+        "depth": 4,
+        "multipv": 3
+      },
+      "color": "#7c3aed"
+    },
+    {
+      "id": "komodo",
+      "label": "Komodo 14.1",
+      "kind": "strength",
+      "type": "uci",
+      "enabled": true,
+      "path": "models/komodo/komodo-14.1-64bit.exe",
+      "options": {
+        "Threads": 2,
+        "Hash": 256
+      },
+      "defaults": {
+        "depth": 4,
+        "multipv": 3
+      },
+      "color": "#0891b2"
     },
     {
       "id": "leela",

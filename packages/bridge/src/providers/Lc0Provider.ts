@@ -225,7 +225,7 @@ export class Lc0Provider implements EngineProvider {
 }
 
 /**
- * Sama seperti di StockfishProvider: request per-analisis menang penuh atas defaults
+ * Sama seperti di UciEngineProvider: request per-analisis menang penuh atas defaults
  * (warm-up mengirim movetimeMs eksplisit dan tidak boleh ikut terseret ke `go depth`),
  * lalu defaults dengan urutan depth > nodes > movetime.
  */

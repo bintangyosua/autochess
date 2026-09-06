@@ -29,6 +29,13 @@ export const overlay = $state({
   orientation: 'white' as 'white' | 'black',
 
   /**
+   * Panel angka di pojok papan. Ini murni tampilan — analisisnya tetap jalan dan panah
+   * tetap digambar saat panel disembunyikan, jadi mematikannya tidak mengubah apa pun
+   * selain seberapa banyak papan yang tertutup.
+   */
+  panelVisible: true,
+
+  /**
    * Kotak papan dalam koordinat viewport. Overlay memposisikan dirinya sendiri dari sini
    * alih-alih menumpang ukuran shadow host — host-nya tidak pernah punya ukuran, dan
    * itu membuat SVG meregang sepenuh layar.
@@ -87,6 +94,17 @@ let persistArrows: ((visibleIds: string[]) => void) | undefined;
 
 export function onArrowsChanged(fn: (visibleIds: string[]) => void): void {
   persistArrows = fn;
+}
+
+let persistPanel: ((visible: boolean) => void) | undefined;
+
+export function onPanelChanged(fn: (visible: boolean) => void): void {
+  persistPanel = fn;
+}
+
+export function togglePanel(): void {
+  overlay.panelVisible = !overlay.panelVisible;
+  persistPanel?.(overlay.panelVisible);
 }
 
 export function toggleArrow(id: string): void {

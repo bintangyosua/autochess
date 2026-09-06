@@ -9,6 +9,7 @@ import {
   markProblem,
   markThinking,
   onArrowsChanged,
+  onPanelChanged,
   overlay,
   syncProviders,
 } from '../../lib/overlayState.svelte';
@@ -16,6 +17,9 @@ import { isRuntimeMessage, type StatusReply } from '../../lib/messages';
 
 /** Kunci storage untuk daftar engine yang panahnya ditampilkan. */
 const ARROWS_KEY = 'visibleArrows';
+
+/** Kunci storage untuk panel data. Panah tidak ikut — keduanya diatur terpisah. */
+const PANEL_KEY = 'panelVisible';
 
 /**
  * Daftar engine, label, warna, dan setelan analisis semuanya berasal dari
@@ -58,9 +62,11 @@ export default defineContentScript({
 
     // Pilihan panah disimpan di storage.local supaya bertahan setelah reload dan
     // berlaku sama di semua tab chess.com.
-    const stored = await browser.storage.local.get(ARROWS_KEY);
+    const stored = await browser.storage.local.get([ARROWS_KEY, PANEL_KEY]);
     const visible = stored[ARROWS_KEY];
     const isVisible = (id: string) => (Array.isArray(visible) ? visible.includes(id) : true);
+    // Default-nya tampil; hanya `false` eksplisit yang menyembunyikan.
+    overlay.panelVisible = stored[PANEL_KEY] !== false;
 
     const applyProviders = (list: ProviderInfo[]) => {
       // Hanya engine yang siap yang dianalisis; yang dimatikan di config tidak muncul.
@@ -69,6 +75,7 @@ export default defineContentScript({
     };
 
     onArrowsChanged((ids) => void browser.storage.local.set({ [ARROWS_KEY]: ids }));
+    onPanelChanged((show) => void browser.storage.local.set({ [PANEL_KEY]: show }));
 
     // Bridge mungkin sudah tersambung sebelum halaman ini dimuat, jadi siaran
     // `providers` bisa sudah lewat. Tanyakan sekali di awal.
@@ -82,12 +89,17 @@ export default defineContentScript({
 
     // Tab lain bisa mengubah pilihan yang sama; ikuti perubahannya.
     browser.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'local' || !changes[ARROWS_KEY]) return;
-      const ids = changes[ARROWS_KEY].newValue;
-      if (!Array.isArray(ids)) return;
-      for (const [id, view] of Object.entries(overlay.providers)) {
-        view.arrowVisible = ids.includes(id);
+      if (area !== 'local') return;
+
+      const ids = changes[ARROWS_KEY]?.newValue;
+      if (Array.isArray(ids)) {
+        for (const [id, view] of Object.entries(overlay.providers)) {
+          view.arrowVisible = ids.includes(id);
+        }
       }
+
+      const panel = changes[PANEL_KEY]?.newValue;
+      if (typeof panel === 'boolean') overlay.panelVisible = panel;
     });
 
     const board = await waitForBoard(ctx.signal);
@@ -162,14 +174,49 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener((raw: unknown) => {
       if (!isRuntimeMessage(raw)) return;
       if (raw.type === 'providers') applyProviders(raw.providers);
-      else if (raw.type === 'analysis') applyResult(raw.result, raw.final);
-      else if (raw.type === 'engineError') {
+      else if (raw.type === 'analysis') {
+        if (raw.final) awaiting.delete(raw.result.providerId);
+        applyResult(raw.result, raw.final);
+      } else if (raw.type === 'engineError') {
         console.warn('[cmr] engine error:', raw.message);
+        awaiting.clear();
         markProblem('blocked', raw.message);
       }
     });
 
     let reqId = 0;
+
+    /**
+     * Engine yang permintaannya sudah diterima bridge tapi hasilnya belum kembali.
+     *
+     * Diterima ≠ selesai: service worker MV3 bisa dimatikan Chrome di tengah analisis,
+     * dan peta `reqId -> tab` di background ikut hilang bersamanya — hasilnya tidak
+     * pernah sampai ke tab mana pun. Tanpa pengawas, panel berhenti di status
+     * "thinking" sampai langkah berikutnya, persis seperti tidak ada saran sama sekali.
+     */
+    const awaiting = new Set<string>();
+    let watchdog: ReturnType<typeof ctx.setTimeout> | undefined;
+    let watchdogFen: string | undefined;
+
+    /** Depth 18 bisa makan beberapa detik; beri kelonggaran sebelum menyimpulkan hilang. */
+    const WATCHDOG_MS = 25_000;
+
+    function armWatchdog(fen: string, retried = false): void {
+      clearTimeout(watchdog);
+      watchdogFen = fen;
+      watchdog = ctx.setTimeout(() => {
+        if (awaiting.size === 0 || watchdogFen !== fen) return;
+        const lost = [...awaiting];
+        if (!retried) {
+          console.warn('[cmr] hasil tidak kembali, meminta ulang:', lost.join(', '));
+          for (const id of lost) requestAnalysis(id, fen);
+          armWatchdog(fen, true);
+          return;
+        }
+        console.warn('[cmr] hasil tetap tidak kembali setelah diminta ulang:', lost.join(', '));
+        markProblem('offline', 'bridge diam, tidak ada hasil');
+      }, WATCHDOG_MS);
+    }
 
     /**
      * Service worker MV3 bisa tidur di antara dua langkah. Permintaan pertama setelah ia
@@ -186,7 +233,10 @@ export default defineContentScript({
         })
         .then((reply) => {
           const ok = (reply as { ok?: boolean } | undefined)?.ok;
-          if (ok) return;
+          if (ok) {
+            awaiting.add(providerId);
+            return;
+          }
           if (attempt < 3) {
             ctx.setTimeout(() => requestAnalysis(providerId, fen, attempt + 1), 500 * attempt);
             return;
@@ -209,11 +259,14 @@ export default defineContentScript({
 
         console.log(`[cmr] posisi: ${snapshot.fen} (sorotan: ${snapshot.highlights.length})`);
         markThinking();
+        awaiting.clear();
+        clearTimeout(watchdog);
         if (engines.length === 0) {
           markProblem('offline', 'belum ada engine dari bridge');
           return;
         }
         for (const engine of engines) requestAnalysis(engine.id, snapshot.fen!);
+        armWatchdog(snapshot.fen!);
       },
       onBoardMissing: () => markProblem('idle', 'papan tidak terbaca'),
     });
