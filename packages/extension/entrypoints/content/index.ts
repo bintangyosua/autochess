@@ -3,26 +3,27 @@ import { browser } from 'wxt/browser';
 import Overlay from './Overlay.svelte';
 import { watchBoard } from '../../lib/board/DomBoardReader';
 import { findBoard } from '../../lib/board/selectors';
+import type { ProviderInfo } from '@cmr/shared';
 import {
   applyResult,
   markProblem,
   markThinking,
   onArrowsChanged,
   overlay,
-  registerProvider,
+  syncProviders,
 } from '../../lib/overlayState.svelte';
-import { isRuntimeMessage } from '../../lib/messages';
+import { isRuntimeMessage, type StatusReply } from '../../lib/messages';
 
 /** Kunci storage untuk daftar engine yang panahnya ditampilkan. */
 const ARROWS_KEY = 'visibleArrows';
 
-const PROVIDERS = [
-  { id: 'stockfish', label: 'Stockfish', kind: 'strength' as const, color: '#2563eb' },
-  { id: 'leela', label: 'Leela', kind: 'strength' as const, color: '#16a34a' },
-  { id: 'maia-1900', label: 'Maia 1900', kind: 'human-like' as const, color: '#ea7317' },
-];
-const MOVETIME_MS = 800;
-const MULTIPV = 3;
+/**
+ * Daftar engine, label, warna, dan setelan analisis semuanya berasal dari
+ * `engines.config.json` lewat bridge. Tidak ada daftar engine kedua di sini — mengubah
+ * engine cukup di satu berkas, dan permintaan analisis sengaja tidak menyertakan
+ * movetime/multipv supaya `defaults` di berkas itu yang berlaku.
+ */
+let engines: ProviderInfo[] = [];
 
 /**
  * Chess.com adalah SPA: saat content script jalan, papan sering belum ada di DOM.
@@ -61,9 +62,23 @@ export default defineContentScript({
     const visible = stored[ARROWS_KEY];
     const isVisible = (id: string) => (Array.isArray(visible) ? visible.includes(id) : true);
 
-    for (const p of PROVIDERS) registerProvider(p.id, p.label, p.kind, p.color, isVisible(p.id));
+    const applyProviders = (list: ProviderInfo[]) => {
+      // Hanya engine yang siap yang dianalisis; yang dimatikan di config tidak muncul.
+      engines = list.filter((p) => p.ready);
+      syncProviders(engines, isVisible);
+    };
 
     onArrowsChanged((ids) => void browser.storage.local.set({ [ARROWS_KEY]: ids }));
+
+    // Bridge mungkin sudah tersambung sebelum halaman ini dimuat, jadi siaran
+    // `providers` bisa sudah lewat. Tanyakan sekali di awal.
+    void browser.runtime
+      .sendMessage({ type: 'status' })
+      .then((reply) => {
+        const status = reply as StatusReply | undefined;
+        if (status?.providers) applyProviders(status.providers);
+      })
+      .catch(() => undefined);
 
     // Tab lain bisa mengubah pilihan yang sama; ikuti perubahannya.
     browser.storage.onChanged.addListener((changes, area) => {
@@ -146,7 +161,8 @@ export default defineContentScript({
 
     browser.runtime.onMessage.addListener((raw: unknown) => {
       if (!isRuntimeMessage(raw)) return;
-      if (raw.type === 'analysis') applyResult(raw.result, raw.final);
+      if (raw.type === 'providers') applyProviders(raw.providers);
+      else if (raw.type === 'analysis') applyResult(raw.result, raw.final);
       else if (raw.type === 'engineError') {
         console.warn('[cmr] engine error:', raw.message);
         markProblem('blocked', raw.message);
@@ -167,8 +183,6 @@ export default defineContentScript({
           reqId: `r${++reqId}`,
           providerId,
           fen,
-          movetimeMs: MOVETIME_MS,
-          multipv: MULTIPV,
         })
         .then((reply) => {
           const ok = (reply as { ok?: boolean } | undefined)?.ok;
@@ -195,7 +209,11 @@ export default defineContentScript({
 
         console.log(`[cmr] posisi: ${snapshot.fen} (sorotan: ${snapshot.highlights.length})`);
         markThinking();
-        for (const p of PROVIDERS) requestAnalysis(p.id, snapshot.fen!);
+        if (engines.length === 0) {
+          markProblem('offline', 'belum ada engine dari bridge');
+          return;
+        }
+        for (const engine of engines) requestAnalysis(engine.id, snapshot.fen!);
       },
       onBoardMissing: () => markProblem('idle', 'papan tidak terbaca'),
     });

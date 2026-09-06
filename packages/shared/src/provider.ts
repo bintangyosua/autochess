@@ -37,11 +37,22 @@ export interface AnalysisResult {
   partial: boolean;
 }
 
+/**
+ * Deskripsi provider yang dikirim bridge ke ekstensi.
+ *
+ * Ekstensi tidak menyimpan daftar engine sendiri — semuanya berasal dari
+ * `engines.config.json`, termasuk warna panah dan setelan analisisnya. Dengan begitu
+ * menambah atau mengubah engine cukup di satu berkas.
+ */
 export interface ProviderInfo {
   id: string;
   label: string;
   kind: ProviderKind;
   ready: boolean;
+  /** Warna panah dan penanda di overlay, mis. "#2563eb". */
+  color?: string;
+  /** Setelan analisis bawaan; ekstensi memakai ini apa adanya. */
+  defaults?: { movetimeMs?: number; depth?: number; nodes?: number; multipv?: number };
   /** Diisi kalau ready === false. */
   problem?: string;
 }

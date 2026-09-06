@@ -120,8 +120,10 @@
           </button>
 
           {#if view.suggestions.length > 0}
+            <!-- Tampilkan semua yang dikirim engine; jumlahnya diatur lewat `multipv`
+                 per provider di content script, bukan dipotong di sini. -->
             <ol>
-              {#each view.suggestions.slice(0, 3) as s, i (s.uci)}
+              {#each view.suggestions as s, i (s.uci)}
                 <li class:best={i === 0}>
                   <span class="move">{s.san ?? s.uci}</span>
                   <span class="score">{scoreText(s, view.kind)}</span>
@@ -168,6 +170,10 @@
     top: 4px;
     right: 4px;
     min-width: 116px;
+    /* Dengan multipv besar daftarnya bisa lebih tinggi dari papan, jadi beri batas
+       dan biarkan bagian dalamnya di-scroll. */
+    max-height: calc(100% - 8px);
+    overflow-y: auto;
     padding: 5px 7px;
     border-radius: 6px;
     background: rgba(24, 24, 27, 0.85);

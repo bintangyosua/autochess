@@ -14,7 +14,10 @@ export type RuntimeMessage =
   | { type: 'status' }
   // background -> content script
   | { type: 'analysis'; reqId: string; result: AnalysisResult; final: boolean }
-  | { type: 'engineError'; reqId?: string; code: string; message: string };
+  | { type: 'engineError'; reqId?: string; code: string; message: string }
+  // Daftar engine berasal dari engines.config.json lewat bridge; content script tidak
+  // menyimpan daftarnya sendiri.
+  | { type: 'providers'; providers: ProviderInfo[] };
 
 export interface StatusReply {
   state: ConnectionState;

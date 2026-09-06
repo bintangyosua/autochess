@@ -1,5 +1,5 @@
 {
-  "$comment": "Path relatif terhadap root repo. type lc0 punya dua mode: \"policy\" (go nodes 1, meniru manusia = Maia) dan \"search\" (pencarian penuh = Leela biasa). Menambah model cukup menyalin satu entri.",
+  "$comment": "Satu-satunya sumber konfigurasi engine. Ekstensi mengambil daftar ini dari bridge, termasuk label, warna panah, dan defaults — tidak ada daftar engine kedua di sisi UI. type lc0 punya dua mode: \"policy\" (go nodes 1, meniru manusia = Maia) dan \"search\" (pencarian penuh = Leela).",
   "engines": [
     {
       "id": "stockfish",
@@ -14,8 +14,9 @@
       },
       "defaults": {
         "movetimeMs": 800,
-        "multipv": 3
-      }
+        "multipv": 10
+      },
+      "color": "#2563eb"
     },
     {
       "id": "leela",
@@ -29,7 +30,8 @@
       "defaults": {
         "movetimeMs": 800,
         "multipv": 3
-      }
+      },
+      "color": "#16a34a"
     },
     {
       "id": "maia-1900",
@@ -43,7 +45,8 @@
         "nodes": 1,
         "multipv": 3
       },
-      "mode": "policy"
+      "mode": "policy",
+      "color": "#ea7317"
     },
     {
       "id": "maia-1500",
@@ -57,7 +60,8 @@
         "nodes": 1,
         "multipv": 3
       },
-      "mode": "policy"
+      "mode": "policy",
+      "color": "#c2410c"
     },
     {
       "id": "maia-1300",
@@ -71,7 +75,8 @@
         "nodes": 1,
         "multipv": 3
       },
-      "mode": "policy"
+      "mode": "policy",
+      "color": "#9a3412"
     }
   ]
 }

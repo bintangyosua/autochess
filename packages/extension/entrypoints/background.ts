@@ -6,6 +6,15 @@ export default defineBackground(() => {
   /** reqId -> tab yang memintanya, supaya hasil dikirim balik ke tab yang benar. */
   const requesters = new Map<string, number>();
 
+  const broadcast = async (message: RuntimeMessage) => {
+    const tabs = await browser.tabs.query({ url: '*://*.chess.com/*' });
+    for (const tab of tabs) {
+      if (tab.id === undefined) continue;
+      // Tab yang belum memuat content script akan menolak pesan; itu wajar.
+      void browser.tabs.sendMessage(tab.id, message).catch(() => undefined);
+    }
+  };
+
   const toTab = (reqId: string, message: RuntimeMessage) => {
     const tabId = requesters.get(reqId);
     if (tabId === undefined) return;
@@ -29,6 +38,9 @@ export default defineBackground(() => {
     onProviders: (providers) => {
       console.log('[cmr] provider:', providers.map((p) => `${p.id}=${p.ready ? 'siap' : p.problem}`));
       void browser.storage.session.set({ providers });
+      // Content script tidak bisa membaca storage.session, jadi daftarnya dikirim
+      // langsung ke tiap tab chess.com yang terbuka.
+      void broadcast({ type: 'providers', providers });
     },
     onPartial: (reqId, result) => toTab(reqId, { type: 'analysis', reqId, result, final: false }),
     onResult: (reqId, result) => {

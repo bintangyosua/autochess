@@ -43,7 +43,18 @@ pnpm bridge:probe -- --provider maia-1900 --debug
 | `maia-1500`, `maia-1300` | Maia | terdaftar, tinggal `enabled: true` |
 
 ## Menambah engine
-Tambahkan entri di `engines.config.json` — tidak ada kode yang perlu diubah.
+Semua konfigurasi engine ada di **satu berkas**: `engines.config.json`. Ekstensi mengambil
+daftarnya dari bridge — termasuk label, warna panah, dan `defaults` — jadi tidak ada daftar
+engine kedua di sisi UI, dan tidak ada kode yang perlu diubah.
+
+| field | pengaruh |
+|---|---|
+| `label` | nama di panel overlay |
+| `color` | warna panah dan penanda |
+| `enabled` | muncul di overlay atau tidak |
+| `defaults.multipv` | berapa langkah berperingkat ditampilkan |
+| `defaults.movetimeMs` | lama berpikir (mode search) |
+| `defaults.nodes` | jumlah node (Maia: 1) |
 
 `type: "lc0"` punya dua mode, memakai biner yang sama:
 

@@ -17,6 +17,8 @@ interface EngineConfigEntry {
   enabled?: boolean;
   path: string;
   weights?: string;
+  /** Warna panah di overlay, mis. "#2563eb". */
+  color?: string;
   /** Khusus type lc0: 'policy' untuk Maia, 'search' untuk Leela biasa. */
   mode?: Lc0Mode;
   options?: Record<string, string | number | boolean>;
@@ -45,6 +47,10 @@ export class ProviderRegistry {
       label: config.label,
       kind: config.kind,
       ready: false,
+      // Diteruskan apa adanya ke ekstensi: warna panah dan setelan analisis ikut
+      // berasal dari berkas ini, supaya tidak ada daftar engine kedua di sisi UI.
+      color: config.color ?? (config.kind === 'human-like' ? '#ea7317' : '#2563eb'),
+      defaults: config.defaults,
     };
 
     if (config.enabled === false) {

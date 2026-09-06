@@ -1,4 +1,4 @@
-import type { AnalysisResult, Suggestion } from '@cmr/shared';
+import type { AnalysisResult, ProviderInfo, Suggestion } from '@cmr/shared';
 
 export type OverlayStatus = 'idle' | 'thinking' | 'ready' | 'offline' | 'blocked';
 
@@ -44,14 +44,39 @@ export const overlay = $state({
   note: '' as string,
 });
 
-export function registerProvider(
-  id: string,
-  label: string,
-  kind: ProviderView['kind'],
-  color: string,
-  arrowVisible = true,
+/**
+ * Selaraskan daftar provider dengan yang dilaporkan bridge.
+ *
+ * Daftar engine tidak lagi ditulis di ekstensi — semuanya berasal dari
+ * `engines.config.json`. Provider yang sudah ada dipertahankan beserta hasil dan
+ * pilihan panahnya, supaya reconnect ke bridge tidak mengosongkan panel.
+ */
+export function syncProviders(
+  infos: readonly ProviderInfo[],
+  isArrowVisible: (id: string) => boolean,
 ): void {
-  overlay.providers[id] = { label, kind, color, arrowVisible, suggestions: [], status: 'idle' };
+  for (const id of Object.keys(overlay.providers)) {
+    if (!infos.some((info) => info.id === id)) delete overlay.providers[id];
+  }
+
+  for (const info of infos) {
+    const existing = overlay.providers[info.id];
+    const color = info.color ?? (info.kind === 'human-like' ? '#ea7317' : '#2563eb');
+    if (existing) {
+      existing.label = info.label;
+      existing.kind = info.kind;
+      existing.color = color;
+      continue;
+    }
+    overlay.providers[info.id] = {
+      label: info.label,
+      kind: info.kind,
+      color,
+      arrowVisible: isArrowVisible(info.id),
+      suggestions: [],
+      status: 'idle',
+    };
+  }
 }
 
 /**
