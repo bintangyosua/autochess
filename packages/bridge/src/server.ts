@@ -109,6 +109,8 @@ async function handle(
         depth: message.depth,
         nodes: message.nodes,
         multipv: message.multipv,
+        elo: message.elo,
+        persona: message.persona,
       },
       (partial) => {
         // Jangan kirim update dari request yang sudah digantikan.

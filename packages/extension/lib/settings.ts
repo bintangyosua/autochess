@@ -91,6 +91,68 @@ export async function saveTiming(timing: AutoTiming): Promise<void> {
 }
 
 /**
+ * Kunci storage untuk target Elo dan kepribadian per engine.
+ *
+ * Polanya sama seperti depth: yang disimpan hanya selisih dari `engines.config.json`,
+ * id engine -> nilai. Engine tanpa entri memakai `defaultElo`/`defaultPersona` dari
+ * berkas config, jadi menghapus setelan berarti kembali ke bawaan.
+ *
+ * Rentang Elo yang sah berbeda-beda per engine dan datang dari bridge (`strength.min`
+ * dan `strength.max`), bukan dari konstanta di sini — Stockfish tidak bisa turun di
+ * bawah 1320, sementara Komodo dan Dragon dipetakan ke skala `Skill` yang lain lagi.
+ */
+export const ELO_KEY = 'engineElo';
+export const PERSONA_KEY = 'enginePersona';
+
+export type EloOverrides = Record<string, number>;
+export type PersonaOverrides = Record<string, string>;
+
+function sanitizeElo(value: unknown): EloOverrides {
+  if (typeof value !== 'object' || value === null) return {};
+  const out: EloOverrides = {};
+  for (const [id, elo] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof elo !== 'number' || !Number.isFinite(elo)) continue;
+    out[id] = Math.round(elo);
+  }
+  return out;
+}
+
+function sanitizePersona(value: unknown): PersonaOverrides {
+  if (typeof value !== 'object' || value === null) return {};
+  const out: PersonaOverrides = {};
+  for (const [id, persona] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof persona === 'string' && persona.length > 0) out[id] = persona;
+  }
+  return out;
+}
+
+export async function loadElos(): Promise<EloOverrides> {
+  const stored = await browser.storage.local.get(ELO_KEY);
+  return sanitizeElo(stored[ELO_KEY]);
+}
+
+export async function saveElos(elos: EloOverrides): Promise<void> {
+  await browser.storage.local.set({ [ELO_KEY]: sanitizeElo(elos) });
+}
+
+export async function loadPersonas(): Promise<PersonaOverrides> {
+  const stored = await browser.storage.local.get(PERSONA_KEY);
+  return sanitizePersona(stored[PERSONA_KEY]);
+}
+
+export async function savePersonas(personas: PersonaOverrides): Promise<void> {
+  await browser.storage.local.set({ [PERSONA_KEY]: sanitizePersona(personas) });
+}
+
+export function readEloChange(value: unknown): EloOverrides {
+  return sanitizeElo(value);
+}
+
+export function readPersonaChange(value: unknown): PersonaOverrides {
+  return sanitizePersona(value);
+}
+
+/**
  * Depth hanya bermakna untuk engine pencari. Mode policy (Maia) selalu `go nodes 1`
  * — satu node tidak punya kedalaman untuk diatur — jadi jangan tawarkan setelannya.
  */

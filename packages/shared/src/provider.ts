@@ -8,6 +8,29 @@ export interface AnalysisRequest {
   depth?: number;
   nodes?: number;
   multipv?: number;
+  /** Target Elo pilihan pengguna; diterjemahkan provider sesuai `StrengthSpec` engine. */
+  elo?: number;
+  /** Id persona dari `ProviderInfo.personas`. */
+  persona?: string;
+}
+
+/**
+ * Cara sebuah engine dibatasi kekuatannya. Tiap engine punya tombolnya sendiri dan
+ * namanya tidak seragam, jadi pemetaannya ditaruh di engines.config.json — bukan di kode.
+ *
+ * - `uciElo` : engine punya UCI_LimitStrength + UCI_Elo (Stockfish). Angkanya native.
+ * - `skill`  : engine hanya punya skala skill bulat (Komodo/Dragon: `Skill` 0..25).
+ *              Elo dipetakan linier ke skala itu, jadi angkanya PERKIRAAN, bukan native.
+ */
+export type StrengthSpec =
+  | { mode: 'uciElo'; min: number; max: number }
+  | { mode: 'skill'; min: number; max: number; option: string; levels: number };
+
+export interface PersonaInfo {
+  id: string;
+  label: string;
+  /** Keterangan singkat untuk UI. */
+  hint?: string;
 }
 
 export interface Suggestion {
@@ -53,6 +76,16 @@ export interface ProviderInfo {
   color?: string;
   /** Setelan analisis bawaan; ekstensi memakai ini apa adanya. */
   defaults?: { movetimeMs?: number; depth?: number; nodes?: number; multipv?: number };
+  /** Ada kalau engine bisa dibatasi kekuatannya; UI memakai min/max-nya sebagai rentang slider. */
+  strength?: StrengthSpec;
+  /** Elo bawaan dari config, dipakai UI sebagai nilai awal sebelum pengguna memilih. */
+  defaultElo?: number;
+  /**
+   * Kepribadian yang tersedia. Kosong atau undefined berarti engine ini memang tidak
+   * menyediakannya — Stockfish tidak punya tombol semacam ini sama sekali.
+   */
+  personas?: PersonaInfo[];
+  defaultPersona?: string;
   /** Diisi kalau ready === false. */
   problem?: string;
 }

@@ -1,5 +1,5 @@
 {
-  "$comment": "Satu-satunya sumber konfigurasi engine. Ekstensi mengambil daftar ini dari bridge, termasuk label, warna panah, dan defaults — tidak ada daftar engine kedua di sisi UI. defaults menerima depth, nodes, atau movetimeMs — dipakai dengan prioritas depth > nodes > movetimeMs (mode policy selalu nodes). type uci dipakai untuk engine UCI biasa (Stockfish, Dragon, Komodo) — tidak ada kode khusus per engine. type lc0 punya dua mode: \"policy\" (go nodes 1, meniru manusia = Maia) dan \"search\" (pencarian penuh = Leela).",
+  "$comment": "Satu-satunya sumber konfigurasi engine. Ekstensi mengambil daftar ini dari bridge, termasuk label, warna panah, dan defaults — tidak ada daftar engine kedua di sisi UI. defaults menerima depth, nodes, atau movetimeMs — dipakai dengan prioritas depth > nodes > movetimeMs (mode policy selalu nodes). type uci dipakai untuk engine UCI biasa (Stockfish, Dragon, Komodo) — tidak ada kode khusus per engine. type lc0 punya dua mode: \"policy\" (go nodes 1, meniru manusia = Maia) dan \"search\" (pencarian penuh = Leela). strength menerjemahkan target Elo jadi setoption: mode uciElo untuk engine yang punya UCI_Elo (hanya Stockfish), mode skill untuk engine yang cuma punya skala skill bulat (Komodo dan Dragon: Skill 0..25) — di sana Elo adalah perkiraan hasil pemetaan linier, bukan angka native. personas berisi setoption per kepribadian; Stockfish tidak punya tombol semacam itu jadi daftarnya memang tidak ada.",
   "engines": [
     {
       "id": "stockfish",
@@ -13,10 +13,16 @@
         "Hash": 256
       },
       "defaults": {
-        "depth": 7,
+        "depth": 4,
         "multipv": 3
       },
-      "color": "#2563eb"
+      "color": "#2563eb",
+      "strength": {
+        "mode": "uciElo",
+        "min": 1320,
+        "max": 3190
+      },
+      "defaultElo": 3190
     },
     {
       "id": "dragon",
@@ -27,13 +33,89 @@
       "path": "models/dragon/dragon-64bit.exe",
       "options": {
         "Threads": 2,
-        "Hash": 256
+        "Hash": 256,
+        "OwnBook": false
       },
       "defaults": {
-        "depth": 6,
+        "depth": 4,
         "multipv": 3
       },
-      "color": "#7c3aed"
+      "color": "#7c3aed",
+      "strength": {
+        "mode": "skill",
+        "min": 1000,
+        "max": 3000,
+        "option": "Skill",
+        "levels": 25
+      },
+      "defaultElo": 3000,
+      "personas": [
+        {
+          "id": "default",
+          "label": "Seimbang",
+          "hint": "bawaan engine",
+          "options": {
+            "Personality": "Default"
+          }
+        },
+        {
+          "id": "aggressive",
+          "label": "Agresif",
+          "hint": "cari serangan, berani ambil risiko",
+          "options": {
+            "Personality": "Aggressive"
+          }
+        },
+        {
+          "id": "defensive",
+          "label": "Bertahan",
+          "hint": "solid, hindari komplikasi",
+          "options": {
+            "Personality": "Defensive"
+          }
+        },
+        {
+          "id": "active",
+          "label": "Aktif",
+          "hint": "bidak dinamis, main terbuka",
+          "options": {
+            "Personality": "Active"
+          }
+        },
+        {
+          "id": "positional",
+          "label": "Posisional",
+          "hint": "tekanan pelan lewat struktur",
+          "options": {
+            "Personality": "Positional"
+          }
+        },
+        {
+          "id": "endgame",
+          "label": "Endgame",
+          "hint": "arahkan ke akhir permainan",
+          "options": {
+            "Personality": "Endgame"
+          }
+        },
+        {
+          "id": "human",
+          "label": "Manusiawi",
+          "hint": "gaya main lebih menyerupai manusia",
+          "options": {
+            "Personality": "Human"
+          }
+        },
+        {
+          "id": "beginner",
+          "label": "Pemula",
+          "hint": "kesalahan khas pemain baru",
+          "options": {
+            "Personality": "Beginner"
+          }
+        }
+      ],
+      "defaultPersona": "default"
     },
     {
       "id": "komodo",
@@ -44,13 +126,89 @@
       "path": "models/komodo/komodo-14.1-64bit.exe",
       "options": {
         "Threads": 2,
-        "Hash": 256
+        "Hash": 256,
+        "OwnBook": false
       },
       "defaults": {
-        "depth": 5,
+        "depth": 4,
         "multipv": 3
       },
-      "color": "#0891b2"
+      "color": "#0891b2",
+      "strength": {
+        "mode": "skill",
+        "min": 1000,
+        "max": 3000,
+        "option": "Skill",
+        "levels": 25
+      },
+      "defaultElo": 3000,
+      "personas": [
+        {
+          "id": "default",
+          "label": "Seimbang",
+          "hint": "bawaan engine",
+          "options": {
+            "Personality": "Default"
+          }
+        },
+        {
+          "id": "aggressive",
+          "label": "Agresif",
+          "hint": "cari serangan, berani ambil risiko",
+          "options": {
+            "Personality": "Aggressive"
+          }
+        },
+        {
+          "id": "defensive",
+          "label": "Bertahan",
+          "hint": "solid, hindari komplikasi",
+          "options": {
+            "Personality": "Defensive"
+          }
+        },
+        {
+          "id": "active",
+          "label": "Aktif",
+          "hint": "bidak dinamis, main terbuka",
+          "options": {
+            "Personality": "Active"
+          }
+        },
+        {
+          "id": "positional",
+          "label": "Posisional",
+          "hint": "tekanan pelan lewat struktur",
+          "options": {
+            "Personality": "Positional"
+          }
+        },
+        {
+          "id": "endgame",
+          "label": "Endgame",
+          "hint": "arahkan ke akhir permainan",
+          "options": {
+            "Personality": "Endgame"
+          }
+        },
+        {
+          "id": "human",
+          "label": "Manusiawi",
+          "hint": "gaya main lebih menyerupai manusia",
+          "options": {
+            "Personality": "Human"
+          }
+        },
+        {
+          "id": "beginner",
+          "label": "Pemula",
+          "hint": "kesalahan khas pemain baru",
+          "options": {
+            "Personality": "Beginner"
+          }
+        }
+      ],
+      "defaultPersona": "default"
     },
     {
       "id": "leela",

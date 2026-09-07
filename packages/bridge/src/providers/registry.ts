@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { EngineProvider, ProviderInfo } from '@cmr/shared';
-import { UciEngineProvider } from './UciEngineProvider.js';
+import type { EngineProvider, ProviderInfo, StrengthSpec } from '@cmr/shared';
+import { UciEngineProvider, type PersonaConfig } from './UciEngineProvider.js';
 import { Lc0Provider, type Lc0Mode } from './Lc0Provider.js';
 
 /** Root repo = tiga level di atas packages/bridge/src/providers. */
@@ -27,6 +27,11 @@ interface EngineConfigEntry {
   mode?: Lc0Mode;
   options?: Record<string, string | number | boolean>;
   defaults?: { movetimeMs?: number; depth?: number; nodes?: number; multipv?: number };
+  /** Cara engine ini dibatasi kekuatannya; tanpa ini, slider Elo tidak muncul untuknya. */
+  strength?: StrengthSpec;
+  defaultElo?: number;
+  personas?: PersonaConfig[];
+  defaultPersona?: string;
 }
 
 export interface RegistryEntry {
@@ -55,6 +60,12 @@ export class ProviderRegistry {
       // berasal dari berkas ini, supaya tidak ada daftar engine kedua di sisi UI.
       color: config.color ?? (config.kind === 'human-like' ? '#ea7317' : '#2563eb'),
       defaults: config.defaults,
+      strength: config.strength,
+      defaultElo: config.defaultElo,
+      // Hanya id/label/hint yang diteruskan: daftar setoption-nya urusan bridge, dan
+      // ekstensi tidak perlu tahu tombol mana yang diputar untuk tiap kepribadian.
+      personas: config.personas?.map(({ id, label, hint }) => ({ id, label, hint })),
+      defaultPersona: config.defaultPersona,
     };
 
     if (config.enabled === false) {
@@ -76,6 +87,10 @@ export class ProviderRegistry {
         path: binary,
         options: config.options,
         defaults: config.defaults,
+        strength: config.strength,
+        defaultElo: config.defaultElo,
+        personas: config.personas,
+        defaultPersona: config.defaultPersona,
         debug,
       });
     } else if (config.type === 'lc0') {

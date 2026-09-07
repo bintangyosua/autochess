@@ -28,6 +28,12 @@ import {
   AUTO_TIMING_KEY,
   DEFAULT_TIMING,
   DEPTH_KEY,
+  ELO_KEY,
+  PERSONA_KEY,
+  loadElos,
+  loadPersonas,
+  readEloChange,
+  readPersonaChange,
   loadDepths,
   loadTiming,
   readDepthChange,
@@ -35,6 +41,8 @@ import {
   supportsDepth,
   type AutoTiming,
   type DepthOverrides,
+  type EloOverrides,
+  type PersonaOverrides,
 } from '../../lib/settings';
 
 /** Kunci storage untuk daftar engine yang panahnya ditampilkan. */
@@ -61,6 +69,13 @@ let engines: ProviderInfo[] = [];
  * `engines.config.json` supaya tetap ada satu sumber nilai bawaan.
  */
 let depths: DepthOverrides = {};
+
+/**
+ * Target Elo dan kepribadian pilihan pengguna, id engine -> nilai. Sama seperti depth,
+ * yang tidak punya entri di sini dibiarkan memakai bawaan di `engines.config.json`.
+ */
+let elos: EloOverrides = {};
+let personas: PersonaOverrides = {};
 
 /**
  * Rentang jeda mode auto dari halaman pengaturan. Perubahannya baru berlaku pada
@@ -123,6 +138,8 @@ export default defineContentScript({
     overlay.panelVisible = stored[PANEL_KEY] !== false;
     applyAutoPlaySetting(stored[AUTO_PLAY_KEY]);
     depths = await loadDepths();
+    elos = await loadElos();
+    personas = await loadPersonas();
     timing = await loadTiming();
 
     const applyProviders = (list: ProviderInfo[]) => {
@@ -174,6 +191,8 @@ export default defineContentScript({
       // Depth yang berubah baru berlaku pada analisis berikutnya; posisi yang sedang
       // dihitung sengaja tidak diulang supaya menggeser slider tidak membanjiri bridge.
       if (DEPTH_KEY in changes) depths = readDepthChange(changes[DEPTH_KEY]?.newValue);
+      if (ELO_KEY in changes) elos = readEloChange(changes[ELO_KEY]?.newValue);
+      if (PERSONA_KEY in changes) personas = readPersonaChange(changes[PERSONA_KEY]?.newValue);
       if (AUTO_TIMING_KEY in changes) timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
     });
 
@@ -314,6 +333,8 @@ export default defineContentScript({
           providerId,
           fen,
           depth: depthFor(providerId),
+          elo: elos[providerId],
+          persona: personas[providerId],
         })
         .then((reply) => {
           const ok = (reply as { ok?: boolean } | undefined)?.ok;

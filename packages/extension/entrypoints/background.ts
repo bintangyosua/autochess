@@ -77,6 +77,8 @@ export default defineBackground(() => {
         movetimeMs: raw.movetimeMs,
         depth: raw.depth,
         multipv: raw.multipv,
+        elo: raw.elo,
+        persona: raw.persona,
       });
       if (!ok) requesters.delete(raw.reqId);
       sendResponse({ ok, state: client.state } satisfies AnalyzeReply);

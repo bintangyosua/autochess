@@ -12,6 +12,10 @@ export type RuntimeMessage =
       /** Override depth dari halaman pengaturan; kalau kosong, `defaults` bridge yang berlaku. */
       depth?: number;
       multipv?: number;
+      /** Target Elo dari halaman pengaturan; kalau kosong, engine jalan penuh. */
+      elo?: number;
+      /** Id persona dari halaman pengaturan; kalau kosong, `defaultPersona` yang berlaku. */
+      persona?: string;
     }
   | { type: 'status' }
   // background -> content script

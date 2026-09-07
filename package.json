@@ -8,7 +8,10 @@
     "bridge:probe": "pnpm --filter @cmr/bridge probe",
     "dev": "pnpm --filter @cmr/extension dev",
     "build": "pnpm --filter @cmr/extension build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "build:firefox": "pnpm --filter @cmr/extension exec wxt build -b firefox",
+    "android": "powershell -ExecutionPolicy Bypass -File scripts/android.ps1",
+    "android:pair": "powershell -ExecutionPolicy Bypass -File scripts/android.ps1 -Pair"
   },
   "devDependencies": {
     "typescript": "^5.7.2"

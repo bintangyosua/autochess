@@ -8,7 +8,15 @@
     DEPTH_KEY,
     DEPTH_MAX,
     DEPTH_MIN,
+    ELO_KEY,
+    PERSONA_KEY,
     loadDepths,
+    loadElos,
+    loadPersonas,
+    readEloChange,
+    readPersonaChange,
+    saveElos,
+    savePersonas,
     readDepthChange,
     loadTiming,
     sanitizeTiming,
@@ -20,12 +28,16 @@
     TIMING_STEP_MS,
     type AutoTiming,
     type DepthOverrides,
+    type EloOverrides,
+    type PersonaOverrides,
   } from '../../lib/settings';
 
   let providers = $state<ProviderInfo[]>([]);
   let depths = $state<DepthOverrides>({});
   let loaded = $state(false);
   let timing = $state<AutoTiming>(DEFAULT_TIMING);
+  let elos = $state<EloOverrides>({});
+  let personas = $state<PersonaOverrides>({});
 
   // Daftar engine tetap datang dari bridge — halaman ini tidak punya daftarnya sendiri,
   // jadi engine yang dimatikan di engines.config.json juga tidak muncul di sini.
@@ -50,6 +62,14 @@
     loaded = true;
   });
 
+  void loadElos().then((values) => {
+    elos = values;
+  });
+
+  void loadPersonas().then((values) => {
+    personas = values;
+  });
+
   // Popup dan tab lain bisa mengubah nilai yang sama; ikuti perubahannya.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && Array.isArray(changes.providers?.newValue)) {
@@ -57,6 +77,12 @@
     }
     if (area === 'local' && DEPTH_KEY in changes) {
       depths = readDepthChange(changes[DEPTH_KEY]?.newValue);
+    }
+    if (area === 'local' && ELO_KEY in changes) {
+      elos = readEloChange(changes[ELO_KEY]?.newValue);
+    }
+    if (area === 'local' && PERSONA_KEY in changes) {
+      personas = readPersonaChange(changes[PERSONA_KEY]?.newValue);
     }
     if (area === 'local' && AUTO_TIMING_KEY in changes) {
       timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
@@ -80,6 +106,54 @@
     const { [provider.id]: _removed, ...rest } = depths;
     depths = rest;
     void saveDepths(depths);
+  }
+
+  /**
+   * Elo yang berlaku. Nilai awalnya ujung atas rentang, bukan tengahnya: tanpa pilihan
+   * eksplisit engine memang jalan penuh, dan slider harus mencerminkan itu.
+   */
+  function eloOf(provider: ProviderInfo): number {
+    return elos[provider.id] ?? provider.defaultElo ?? provider.strength?.max ?? 0;
+  }
+
+  function setElo(provider: ProviderInfo, raw: number): void {
+    const spec = provider.strength;
+    if (!spec) return;
+    const elo = Math.min(spec.max, Math.max(spec.min, Math.round(raw)));
+    elos = { ...elos, [provider.id]: elo };
+    void saveElos(elos);
+  }
+
+  function resetElo(provider: ProviderInfo): void {
+    const { [provider.id]: _removed, ...rest } = elos;
+    elos = rest;
+    void saveElos(elos);
+  }
+
+  function personaOf(provider: ProviderInfo): string {
+    return personas[provider.id] ?? provider.defaultPersona ?? provider.personas?.[0]?.id ?? '';
+  }
+
+  function setPersona(provider: ProviderInfo, id: string): void {
+    personas = { ...personas, [provider.id]: id };
+    void savePersonas(personas);
+  }
+
+  /**
+   * Di ujung atas rentang pembatas dilepas sama sekali, jadi angkanya menyesatkan kalau
+   * ditampilkan. Untuk engine mode `skill` angkanya hasil pemetaan ke skala Skill 0..25 —
+   * ditandai `≈` supaya tidak dibaca sebagai Elo native seperti punya Stockfish.
+   */
+  function eloLabel(provider: ProviderInfo): string {
+    const spec = provider.strength;
+    if (!spec) return '';
+    const value = eloOf(provider);
+    if (value >= spec.max) return 'penuh';
+    return spec.mode === 'skill' ? `≈${value}` : `${value}`;
+  }
+
+  function personaHint(provider: ProviderInfo): string {
+    return provider.personas?.find((x) => x.id === personaOf(provider))?.hint ?? '';
   }
 
   /**
@@ -110,8 +184,16 @@
 
   function resetAll(): void {
     depths = {};
+    elos = {};
+    personas = {};
     void saveDepths(depths);
+    void saveElos(elos);
+    void savePersonas(personas);
   }
+
+  const anyOverride = $derived(
+    Object.keys(depths).length + Object.keys(elos).length + Object.keys(personas).length > 0,
+  );
 </script>
 
 <main>
@@ -183,11 +265,12 @@
   </section>
 
   <header>
-    <h2>Depth engine</h2>
+    <h2>Engine</h2>
     <p class="lead">
-      Makin dalam, makin kuat sarannya — dan makin lama menunggunya. Setelan ini berlaku
-      untuk semua tab dan menimpa <code>defaults.depth</code> di
-      <code>engines.config.json</code> tanpa mengubah berkasnya.
+      Depth, kekuatan, dan kepribadian per engine. Semuanya berlaku untuk semua tab dan
+      menimpa nilai di <code>engines.config.json</code> tanpa mengubah berkasnya. Pilihan
+      yang tersedia berbeda-beda karena tiap engine memang menyediakan tombol yang
+      berbeda.
     </p>
   </header>
 
@@ -207,15 +290,23 @@
           <div class="top">
             <span class="dot" class:ready={provider.ready}></span>
             <span class="name">{provider.label}</span>
-            {#if custom}
-              <button type="button" class="link" onclick={() => reset(provider)}>
-                kembalikan ke bawaan
-              </button>
-            {:else if provider.defaults?.depth !== undefined}
-              <span class="tag">bawaan</span>
-            {/if}
-            <span class="value">d{value}</span>
           </div>
+
+          <!-- Depth diberi label sendiri seperti Kekuatan dan Kepribadian. Tanpa itu,
+               slider paling atas adalah satu-satunya yang tak bernama, dan tidak ada cara
+               menebak bahwa "d2" di kanan adalah judulnya. -->
+          <div class="sub first">
+            <div class="top">
+              <span class="sublabel">Depth</span>
+              {#if custom}
+                <button type="button" class="link" onclick={() => reset(provider)}>
+                  kembalikan ke bawaan
+                </button>
+              {:else if provider.defaults?.depth !== undefined}
+                <span class="tag">bawaan</span>
+              {/if}
+              <span class="value">d{value}</span>
+            </div>
 
           <div class="row">
             <input
@@ -237,6 +328,76 @@
               onchange={(e) => set(provider, e.currentTarget.valueAsNumber)}
             />
           </div>
+            <p class="fine">
+              Seberapa jauh engine berpikir. Kalau depth-nya rendah, ia sudah lebih lemah
+              daripada Elo mana pun di bawah — dan slider Kekuatan jadi tidak berefek.
+            </p>
+          </div>
+
+          {#if provider.strength}
+            <div class="sub">
+              <div class="top">
+                <span class="sublabel">Kekuatan</span>
+                {#if elos[provider.id] !== undefined}
+                  <button type="button" class="link" onclick={() => resetElo(provider)}>
+                    kembalikan ke bawaan
+                  </button>
+                {/if}
+                <span class="value">{eloLabel(provider)}</span>
+              </div>
+              <div class="row">
+                <input
+                  type="range"
+                  min={provider.strength.min}
+                  max={provider.strength.max}
+                  step="10"
+                  aria-label={`Elo ${provider.label}`}
+                  value={eloOf(provider)}
+                  oninput={(e) => setElo(provider, e.currentTarget.valueAsNumber)}
+                />
+                <input
+                  type="number"
+                  min={provider.strength.min}
+                  max={provider.strength.max}
+                  step="10"
+                  aria-label={`Elo ${provider.label} (angka)`}
+                  value={eloOf(provider)}
+                  onchange={(e) => setElo(provider, e.currentTarget.valueAsNumber)}
+                />
+              </div>
+              <!-- Perbedaan ini nyata dan tidak bisa disembunyikan: hanya Stockfish yang
+                   punya UCI_Elo. Sisanya dipetakan ke skala Skill, jadi angkanya perkiraan. -->
+              <p class="fine">
+                {#if provider.strength.mode === 'skill'}
+                  Perkiraan — engine ini tidak punya <code>UCI_Elo</code>, angkanya dipetakan
+                  ke <code>Skill</code> 0–{provider.strength.levels}.
+                {:else}
+                  Native <code>UCI_Elo</code>, rentang {provider.strength.min}–{provider.strength.max}.
+                {/if}
+                Skalanya milik engine, bukan skala Chess.com atau Lichess.
+              </p>
+            </div>
+          {/if}
+
+          {#if provider.personas?.length}
+            <div class="sub">
+              <div class="top">
+                <span class="sublabel">Kepribadian</span>
+                <select
+                  aria-label={`Kepribadian ${provider.label}`}
+                  value={personaOf(provider)}
+                  onchange={(e) => setPersona(provider, e.currentTarget.value)}
+                >
+                  {#each provider.personas as persona (persona.id)}
+                    <option value={persona.id}>{persona.label}</option>
+                  {/each}
+                </select>
+              </div>
+              {#if personaHint(provider)}
+                <p class="fine">{personaHint(provider)}</p>
+              {/if}
+            </div>
+          {/if}
 
           {#if !provider.ready}
             <p class="problem">{provider.problem ?? 'engine tidak siap'}</p>
@@ -246,14 +407,20 @@
     </ul>
 
     <footer>
-      <button type="button" onclick={resetAll} disabled={Object.keys(depths).length === 0}>
+      <button type="button" onclick={resetAll} disabled={!anyOverride}>
         Kembalikan semua ke bawaan
       </button>
       <!-- Mode policy tidak punya kedalaman untuk diatur; katakan sekali di sini supaya
            orang tidak mencari-cari setelan Maia yang memang tidak ada. -->
       <p class="note">
         Engine manusiawi (Maia) tidak muncul di sini: mode policy hanya menghitung satu
-        node, jadi tidak ada depth yang bisa diatur.
+        node, jadi tidak ada depth yang bisa diatur. Kekuatannya sudah melekat pada bobot
+        yang dipakai — pilih Maia 1300, 1500, atau 1900 di <code>engines.config.json</code>.
+      </p>
+      <p class="note">
+        Stockfish tidak punya pilihan kepribadian karena engine-nya memang tidak
+        menyediakan tombol itu; Dragon dan Komodo punya. Sebaliknya hanya Stockfish yang
+        punya Elo native.
       </p>
     </footer>
   {/if}
@@ -326,6 +493,22 @@
   }
 
   .problem { margin: 6px 0 0; color: #a16207; font-size: 11.5px; }
+
+  .sub { margin-top: 10px; padding-top: 9px; border-top: 1px solid #f0efee; }
+  /* Yang pertama menempel langsung di bawah nama engine; garisnya jadi mubazir. */
+  .sub.first { margin-top: 6px; padding-top: 0; border-top: 0; }
+  .sublabel { color: #78716c; font-size: 11.5px; font-weight: 600; }
+  .fine { margin: 5px 0 0; color: #78716c; font-size: 11px; line-height: 1.45; }
+  select {
+    margin-left: auto;
+    padding: 3px 6px;
+    border: 1px solid #d6d3d1;
+    border-radius: 5px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+    font-size: 12.5px;
+  }
   .empty { color: #78716c; }
 
   .link {
@@ -362,6 +545,9 @@
     .block { border-color: #292524; background: #232020; }
     .block label, .unit { color: #a8a29e; }
     input[type='number'] { border-color: #44403c; background: #1c1917; }
+    select { border-color: #44403c; background: #1c1917; }
+    .sub { border-top-color: #292524; }
+    .sublabel, .fine { color: #a8a29e; }
     .lead, .tag, .empty, .note { color: #a8a29e; }
     .value { color: #d6d3d1; }
     footer button { border-color: #44403c; background: #232020; }

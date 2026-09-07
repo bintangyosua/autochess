@@ -29,6 +29,9 @@ export type ClientMessage =
       depth?: number;
       nodes?: number;
       multipv?: number;
+      /** Target Elo pilihan pengguna; bridge yang menerjemahkannya ke opsi engine. */
+      elo?: number;
+      persona?: string;
     }
   | { type: 'stop'; reqId: string }
   | { type: 'pong' };

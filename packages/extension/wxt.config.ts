@@ -7,5 +7,11 @@ export default defineConfig({
     description: 'Baca posisi di chess.com dan tampilkan saran dari engine lokal.',
     permissions: ['storage'],
     host_permissions: ['*://*.chess.com/*'],
+    browser_specific_settings: {
+      gecko: {
+        id: 'chess-move-reader@local',
+        strict_min_version: '121.0',
+      },
+    },
   },
 });
