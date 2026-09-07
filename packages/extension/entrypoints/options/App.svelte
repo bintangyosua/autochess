@@ -3,19 +3,29 @@
   import type { ProviderInfo } from '@cmr/shared';
   import type { StatusReply } from '../../lib/messages';
   import {
+    AUTO_TIMING_KEY,
+    DEFAULT_TIMING,
     DEPTH_KEY,
     DEPTH_MAX,
     DEPTH_MIN,
     loadDepths,
     readDepthChange,
+    loadTiming,
+    sanitizeTiming,
     saveDepths,
+    saveTiming,
     supportsDepth,
+    TIMING_MAX_MS,
+    TIMING_MIN_MS,
+    TIMING_STEP_MS,
+    type AutoTiming,
     type DepthOverrides,
   } from '../../lib/settings';
 
   let providers = $state<ProviderInfo[]>([]);
   let depths = $state<DepthOverrides>({});
   let loaded = $state(false);
+  let timing = $state<AutoTiming>(DEFAULT_TIMING);
 
   // Daftar engine tetap datang dari bridge — halaman ini tidak punya daftarnya sendiri,
   // jadi engine yang dimatikan di engines.config.json juga tidak muncul di sini.
@@ -31,6 +41,10 @@
     })
     .catch(() => undefined);
 
+  void loadTiming().then((values) => {
+    timing = values;
+  });
+
   void loadDepths().then((values) => {
     depths = values;
     loaded = true;
@@ -43,6 +57,9 @@
     }
     if (area === 'local' && DEPTH_KEY in changes) {
       depths = readDepthChange(changes[DEPTH_KEY]?.newValue);
+    }
+    if (area === 'local' && AUTO_TIMING_KEY in changes) {
+      timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
     }
   });
 
@@ -65,6 +82,32 @@
     void saveDepths(depths);
   }
 
+  /**
+   * Menggeser satu ujung ikut mendorong ujung lainnya kalau keduanya berpapasan.
+   * Rentang terbalik tidak punya arti, dan menolak input diam-diam lebih
+   * membingungkan daripada memindahkan ujung yang satunya di depan mata.
+   */
+  function setTiming(edge: 'minMs' | 'maxMs', raw: number): void {
+    const next = { ...timing, [edge]: raw };
+    if (edge === 'minMs' && next.minMs > next.maxMs) next.maxMs = next.minMs;
+    if (edge === 'maxMs' && next.maxMs < next.minMs) next.minMs = next.maxMs;
+    timing = sanitizeTiming(next);
+    void saveTiming(timing);
+  }
+
+  function resetTiming(): void {
+    timing = DEFAULT_TIMING;
+    void saveTiming(timing);
+  }
+
+  const timingChanged = $derived(
+    timing.minMs !== DEFAULT_TIMING.minMs || timing.maxMs !== DEFAULT_TIMING.maxMs,
+  );
+
+  function seconds(ms: number): string {
+    return (ms / 1000).toFixed(1).replace('.', ',');
+  }
+
   function resetAll(): void {
     depths = {};
     void saveDepths(depths);
@@ -73,7 +116,74 @@
 
 <main>
   <header>
-    <h1>Pengaturan depth</h1>
+    <h1>Pengaturan</h1>
+  </header>
+
+  <section class="block">
+    <div class="top">
+      <h2>Jeda mode auto</h2>
+      {#if timingChanged}
+        <button type="button" class="link" onclick={resetTiming}>kembalikan ke bawaan</button>
+      {:else}
+        <span class="tag">bawaan</span>
+      {/if}
+      <span class="value">{seconds(timing.minMs)}–{seconds(timing.maxMs)}s</span>
+    </div>
+    <p class="lead">
+      Waktu acak antara hasil engine dan bidak mendarat di papan. Angka ini untuk langkah
+      utuh — jeda antar-klik diambil dari dalamnya, bukan ditambahkan di atasnya. Waktu
+      berpikir engine sendiri diatur lewat depth di bawah.
+    </p>
+
+    <div class="row">
+      <label for="tmin">min</label>
+      <input
+        id="tmin"
+        type="range"
+        min={TIMING_MIN_MS}
+        max={TIMING_MAX_MS}
+        step={TIMING_STEP_MS}
+        value={timing.minMs}
+        oninput={(e) => setTiming('minMs', e.currentTarget.valueAsNumber)}
+      />
+      <input
+        type="number"
+        min={TIMING_MIN_MS}
+        max={TIMING_MAX_MS}
+        step={TIMING_STEP_MS}
+        aria-label="Jeda minimum (ms)"
+        value={timing.minMs}
+        onchange={(e) => setTiming('minMs', e.currentTarget.valueAsNumber)}
+      />
+      <span class="unit">ms</span>
+    </div>
+
+    <div class="row">
+      <label for="tmax">maks</label>
+      <input
+        id="tmax"
+        type="range"
+        min={TIMING_MIN_MS}
+        max={TIMING_MAX_MS}
+        step={TIMING_STEP_MS}
+        value={timing.maxMs}
+        oninput={(e) => setTiming('maxMs', e.currentTarget.valueAsNumber)}
+      />
+      <input
+        type="number"
+        min={TIMING_MIN_MS}
+        max={TIMING_MAX_MS}
+        step={TIMING_STEP_MS}
+        aria-label="Jeda maksimum (ms)"
+        value={timing.maxMs}
+        onchange={(e) => setTiming('maxMs', e.currentTarget.valueAsNumber)}
+      />
+      <span class="unit">ms</span>
+    </div>
+  </section>
+
+  <header>
+    <h2>Depth engine</h2>
     <p class="lead">
       Makin dalam, makin kuat sarannya — dan makin lama menunggunya. Setelan ini berlaku
       untuk semua tab dan menimpa <code>defaults.depth</code> di
@@ -159,7 +269,25 @@
   }
   :global(body) { margin: 0; background: #fafaf9; }
 
-  h1 { margin: 0 0 6px; font-size: 18px; }
+  h1 { margin: 0 0 14px; font-size: 18px; }
+  h2 { margin: 0; font-size: 14px; }
+
+  .block {
+    margin-bottom: 22px;
+    padding: 12px;
+    border: 1px solid #e7e5e4;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .block .lead { margin: 8px 0 10px; }
+  .block .row { margin-top: 6px; }
+  .block label {
+    width: 34px;
+    flex: none;
+    color: #78716c;
+    font-size: 11.5px;
+  }
+  .unit { color: #a8a29e; font-size: 11px; }
   .lead { margin: 0 0 18px; color: #57534e; font-size: 12.5px; }
   code { background: #e7e5e4; padding: 1px 4px; border-radius: 3px; font-size: 11.5px; }
 
@@ -231,6 +359,8 @@
     main { color: #e7e5e4; }
     code { background: #292524; }
     li { border-color: #292524; background: #232020; }
+    .block { border-color: #292524; background: #232020; }
+    .block label, .unit { color: #a8a29e; }
     input[type='number'] { border-color: #44403c; background: #1c1917; }
     .lead, .tag, .empty, .note { color: #a8a29e; }
     .value { color: #d6d3d1; }

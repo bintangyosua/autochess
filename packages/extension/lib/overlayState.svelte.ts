@@ -45,6 +45,24 @@ export const overlay = $state({
   /** Hasil per provider, supaya Stockfish dan Maia tampil berdampingan. */
   providers: {} as Record<string, ProviderView>,
 
+  /** FEN pembacaan terakhir yang diterima; acuan mode auto. */
+  fen: undefined as string | undefined,
+
+  /**
+   * Mode auto: langkah terbaik dimainkan sendiri saat giliranmu.
+   *
+   * `providerId` menentukan engine mana yang dituruti — panel bisa menampilkan tiga
+   * engine sekaligus dan mereka sering tidak sepakat, jadi "langkah terbaik" tidak
+   * punya arti sampai satu engine dipilih. Kosong berarti belum dipilih dan yang
+   * pertama siap yang dipakai.
+   */
+  autoPlay: {
+    enabled: false,
+    providerId: '' as string,
+    /** Langkah yang sedang menunggu jeda, untuk ditampilkan di panel. */
+    message: '',
+  },
+
   /** true kalau giliran berhasil dibaca dari sorotan, bukan ditebak. */
   turnKnown: true,
   assumptions: [] as string[],
@@ -116,6 +134,45 @@ export function toggleArrow(id: string): void {
       .filter(([, v]) => v.arrowVisible)
       .map(([key]) => key),
   );
+}
+
+let persistAutoPlay: ((state: { enabled: boolean; providerId: string }) => void) | undefined;
+
+export function onAutoPlayChanged(
+  fn: (state: { enabled: boolean; providerId: string }) => void,
+): void {
+  persistAutoPlay = fn;
+}
+
+function saveAutoPlay(): void {
+  persistAutoPlay?.({
+    enabled: overlay.autoPlay.enabled,
+    providerId: overlay.autoPlay.providerId,
+  });
+}
+
+export function toggleAutoPlay(): void {
+  overlay.autoPlay.enabled = !overlay.autoPlay.enabled;
+  overlay.autoPlay.message = '';
+  saveAutoPlay();
+}
+
+export function setAutoPlayProvider(id: string): void {
+  overlay.autoPlay.providerId = id;
+  overlay.autoPlay.message = '';
+  saveAutoPlay();
+}
+
+/**
+ * Engine yang benar-benar dituruti mode auto. Pilihan yang menunjuk engine yang sudah
+ * tidak ada (config berubah, engine dimatikan) jatuh ke engine pertama alih-alih diam
+ * tanpa penjelasan.
+ */
+export function autoPlayProviderId(): string | undefined {
+  const ids = Object.keys(overlay.providers);
+  const chosen = overlay.autoPlay.providerId;
+  if (chosen && ids.includes(chosen)) return chosen;
+  return ids[0];
 }
 
 /**

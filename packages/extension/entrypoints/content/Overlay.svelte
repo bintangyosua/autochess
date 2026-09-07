@@ -1,10 +1,14 @@
 <script lang="ts">
   import {
+    autoPlayProviderId,
     overlay,
+    setAutoPlayProvider,
     toggleArrow,
+    toggleAutoPlay,
     togglePanel,
     type ProviderView,
   } from '../../lib/overlayState.svelte';
+
 
   /**
    * Papan digambar sebagai grid 8x8 lewat viewBox, jadi koordinat panah ditulis dalam
@@ -137,6 +141,19 @@
     <div class="panel" class:collapsed={!overlay.panelVisible}>
       <div class="bar">
         {#if overlay.panelVisible}<span class="dim">analisis</span>{/if}
+        <div class="tools">
+        <button
+          type="button"
+          class="toggle"
+          class:on={overlay.autoPlay.enabled}
+          aria-pressed={overlay.autoPlay.enabled}
+          title={overlay.autoPlay.enabled
+            ? 'Matikan mode auto'
+            : 'Mainkan langkah engine otomatis saat giliranmu'}
+          onclick={toggleAutoPlay}
+        >
+          {'▶'}
+        </button>
         <button
           type="button"
           class="toggle"
@@ -148,9 +165,30 @@
         >
           {overlay.panelVisible ? '×' : 'i'}
         </button>
+        </div>
       </div>
 
       {#if overlay.panelVisible}
+        {#if overlay.autoPlay.enabled}
+          <!-- Engine mana yang dituruti harus terlihat, bukan tersembunyi di
+               pengaturan: tiga engine di panel sering menyarankan langkah berbeda. -->
+          <div class="auto">
+            <span class="dim">auto</span>
+            <select
+              value={autoPlayProviderId() ?? ''}
+              onchange={(e) => setAutoPlayProvider(e.currentTarget.value)}
+              aria-label="Engine untuk mode auto"
+            >
+              {#each views as [id, view] (id)}
+                <option value={id}>{view.label}</option>
+              {/each}
+            </select>
+          </div>
+          {#if overlay.autoPlay.message}
+            <p class="auto-msg">{overlay.autoPlay.message}</p>
+          {/if}
+        {/if}
+
         {#each views as [id, view] (id)}
           <section class:muted={!view.arrowVisible}>
             <button
@@ -248,6 +286,29 @@
     gap: 8px;
   }
   .panel:not(.collapsed) .bar { margin-bottom: 3px; }
+  .tools { display: flex; gap: 3px; }
+  .toggle.on { background: #2563eb; color: #fff; }
+  .toggle.on:hover { background: #3b82f6; }
+
+  .auto {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #3f3f46;
+  }
+  .auto select {
+    max-width: 96px;
+    padding: 1px 3px;
+    border: 1px solid #52525b;
+    border-radius: 3px;
+    background: #18181b;
+    color: #f4f4f5;
+    font: 11px/1.3 system-ui, sans-serif;
+  }
+  .auto-msg { margin: 0 0 4px; color: #86efac; font-size: 10.5px; }
   .toggle {
     flex: none;
     width: 15px;
@@ -300,5 +361,6 @@
   .score { color: #a1a1aa; }
   li.best .score { color: #e4e4e7; }
   .warn { margin: 3px 0 0; color: #fcd34d; font-size: 10px; }
+
   p { margin: 0; }
 </style>

@@ -69,6 +69,29 @@ engine kedua di sisi UI, dan tidak ada kode yang perlu diubah.
 | `policy` | `go nodes 1` | persentase policy | Maia — kemiripan dengan manusia justru datang dari tidak mencari |
 | `search` | `go movetime` | evaluasi centipawn | jaringan Leela biasa |
 
+## Mode auto
+
+Tombol ▶ di panel overlay memainkan langkah engine sendiri setiap giliranmu. Engine yang
+dituruti dipilih lewat dropdown di panel — panel bisa menampilkan tiga engine sekaligus
+dan mereka sering tidak sepakat, jadi "langkah terbaik" baru punya arti setelah satu
+engine dipilih. Bawaannya engine pertama yang siap (Stockfish).
+
+Total waktu dari hasil engine sampai langkah mendarat di papan diacak dalam rentang yang
+diatur di halaman pengaturan (bawaan 0,5–1,5 detik). Angka itu untuk langkah utuh: di
+dalamnya dibagi lagi jadi jeda berpikir lalu jeda antar-klik, dengan porsi yang ikut diacak
+supaya tiap langkah tidak punya bentuk waktu yang identik. Waktu berpikir engine sendiri
+diatur terpisah lewat depth.
+
+Auto diam kalau bukan giliranmu (sisi pemain dibaca dari orientasi papan) atau kalau posisi
+berubah selama jeda — memainkan langkah lama di posisi baru adalah blunder yang dibuat
+ekstensi, bukan olehmu. Setiap kali ia memilih untuk tidak bergerak, alasannya ditulis di
+panel dan di console (); mode yang bekerja tanpa diminta tidak boleh gagal
+dalam diam.
+
+Langkahnya dikirim sebagai klik-asal lalu klik-tujuan. Kalau papan tidak merespons —
+setelan "move method" di chess.com bisa diset drag saja — langkah yang sama diulang
+sekali sebagai drag sebelum menyerah.
+
 ## Struktur
 | Paket | Isi |
 |---|---|

@@ -43,6 +43,54 @@ export function readDepthChange(value: unknown): DepthOverrides {
 }
 
 /**
+ * Kunci storage untuk rentang jeda mode auto, dalam milidetik.
+ *
+ * Tidak seperti depth, ini tidak punya bawaan di `engines.config.json` — timing adalah
+ * urusan cara ekstensi berperilaku, bukan urusan engine. Jadi nilainya disimpan utuh di
+ * sini, dengan bawaan yang sama seperti sebelum setelan ini ada.
+ */
+export const AUTO_TIMING_KEY = 'autoTiming';
+
+export interface AutoTiming {
+  /** Total waktu satu langkah, dari hasil engine sampai bidak mendarat. */
+  minMs: number;
+  maxMs: number;
+}
+
+/** Batas yang masuk akal: di bawah 100 ms tidak lagi menyerupai tangan manusia. */
+export const TIMING_MIN_MS = 100;
+export const TIMING_MAX_MS = 10_000;
+export const TIMING_STEP_MS = 100;
+
+export const DEFAULT_TIMING: AutoTiming = { minMs: 500, maxMs: 1_500 };
+
+function clampMs(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(TIMING_MAX_MS, Math.max(TIMING_MIN_MS, Math.round(value)));
+}
+
+/**
+ * Nilai yang tersimpan bisa berasal dari versi lama atau tab lain, jadi bentuknya tidak
+ * dijamin. Yang penting dijaga adalah min <= max: rentang terbalik akan membuat
+ * perhitungan jeda menghasilkan angka negatif, dan langkah dimainkan seketika.
+ */
+export function sanitizeTiming(value: unknown): AutoTiming {
+  const raw = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  const minMs = clampMs(raw.minMs, DEFAULT_TIMING.minMs);
+  const maxMs = clampMs(raw.maxMs, DEFAULT_TIMING.maxMs);
+  return minMs <= maxMs ? { minMs, maxMs } : { minMs: maxMs, maxMs: minMs };
+}
+
+export async function loadTiming(): Promise<AutoTiming> {
+  const stored = await browser.storage.local.get(AUTO_TIMING_KEY);
+  return sanitizeTiming(stored[AUTO_TIMING_KEY]);
+}
+
+export async function saveTiming(timing: AutoTiming): Promise<void> {
+  await browser.storage.local.set({ [AUTO_TIMING_KEY]: sanitizeTiming(timing) });
+}
+
+/**
  * Depth hanya bermakna untuk engine pencari. Mode policy (Maia) selalu `go nodes 1`
  * — satu node tidak punya kedalaman untuk diatur — jadi jangan tawarkan setelannya.
  */
