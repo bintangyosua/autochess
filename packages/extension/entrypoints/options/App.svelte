@@ -371,6 +371,15 @@
               Seberapa jauh engine berpikir. Kalau depth-nya rendah, ia sudah lebih lemah
               daripada Elo mana pun di bawah — dan slider Kekuatan jadi tidak berefek.
             </p>
+            <!-- Hubungan ini tidak terduga sampai kamu menemukannya sendiri: daftar
+                 kelanjutan di panel rekomendasi terasa "kosong" padahal engine memang
+                 belum menghitung sejauh itu. -->
+            <p class="fine">
+              Ini juga yang menentukan panjang daftar kelanjutan di panel rekomendasi:
+              engine hanya melaporkan garis sejauh yang ia cari. Di depth 1–2 tidak ada
+              kelanjutan sama sekali, di depth 4 sekitar empat langkah, dan baru dari
+              sekitar depth 12 daftarnya benar-benar panjang.
+            </p>
           </div>
 
           <div class="sub">

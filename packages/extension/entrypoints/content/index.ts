@@ -12,6 +12,7 @@ import {
   markThinking,
   onArrowsChanged,
   onAutoPlayChanged,
+  onMovesPanelChanged,
   onPanelChanged,
   overlay,
   syncProviders,
@@ -57,6 +58,16 @@ const ARROWS_KEY = 'visibleArrows';
 
 /** Kunci storage untuk panel data. Panah tidak ikut — keduanya diatur terpisah. */
 const PANEL_KEY = 'panelVisible';
+
+/**
+ * Kunci storage untuk panel daftar rekomendasi di luar papan.
+ *
+ * Terpisah dari PANEL_KEY, bukan berbagi satu nilai: panel di dalam papan menutupi kotak
+ * sehingga sering ditutup di tengah permainan, sedangkan yang di luar justru dipakai
+ * untuk mengklik langkah. Satu tombol untuk keduanya berarti menutup yang satu memaksa
+ * menutup yang lain.
+ */
+const MOVES_PANEL_KEY = 'movesPanelVisible';
 
 /** Kunci storage untuk mode auto: `{ enabled, providerId }`. Mati secara bawaan. */
 const AUTO_PLAY_KEY = 'autoPlay';
@@ -148,11 +159,17 @@ export default defineContentScript({
 
     // Pilihan panah disimpan di storage.local supaya bertahan setelah reload dan
     // berlaku sama di semua tab chess.com.
-    const stored = await browser.storage.local.get([ARROWS_KEY, PANEL_KEY, AUTO_PLAY_KEY]);
+    const stored = await browser.storage.local.get([
+      ARROWS_KEY,
+      PANEL_KEY,
+      MOVES_PANEL_KEY,
+      AUTO_PLAY_KEY,
+    ]);
     const visible = stored[ARROWS_KEY];
     const isVisible = (id: string) => (Array.isArray(visible) ? visible.includes(id) : true);
     // Default-nya tampil; hanya `false` eksplisit yang menyembunyikan.
     overlay.panelVisible = stored[PANEL_KEY] !== false;
+    overlay.movesPanelVisible = stored[MOVES_PANEL_KEY] !== false;
     applyAutoPlaySetting(stored[AUTO_PLAY_KEY]);
     depths = await loadDepths();
     elos = await loadElos();
@@ -172,6 +189,7 @@ export default defineContentScript({
 
     onArrowsChanged((ids) => void browser.storage.local.set({ [ARROWS_KEY]: ids }));
     onPanelChanged((show) => void browser.storage.local.set({ [PANEL_KEY]: show }));
+    onMovesPanelChanged((show) => void browser.storage.local.set({ [MOVES_PANEL_KEY]: show }));
     onAutoPlayChanged((state) => {
       void browser.storage.local.set({ [AUTO_PLAY_KEY]: state });
       // Menyalakan mode auto (atau berpindah engine) di tengah giliran harus langsung
@@ -204,6 +222,9 @@ export default defineContentScript({
 
       const panel = changes[PANEL_KEY]?.newValue;
       if (typeof panel === 'boolean') overlay.panelVisible = panel;
+
+      const movesPanel = changes[MOVES_PANEL_KEY]?.newValue;
+      if (typeof movesPanel === 'boolean') overlay.movesPanelVisible = movesPanel;
 
       if (AUTO_PLAY_KEY in changes) {
         applyAutoPlaySetting(changes[AUTO_PLAY_KEY]?.newValue);

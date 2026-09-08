@@ -5,10 +5,13 @@
     setAutoPlayProvider,
     toggleArrow,
     toggleAutoPlay,
+    toggleMovesPanel,
     togglePanel,
     type ProviderView,
   } from '../../lib/overlayState.svelte';
   import { buildArrow, layoutLabels, scoreText, type Arrow } from '../../lib/overlay/arrows';
+  import { playSuggestion } from '../../lib/input/playSuggestion';
+  import { pvLine } from '../../lib/overlay/pv';
 
 
   type Suggestion = ProviderView['suggestions'][number];
@@ -76,6 +79,33 @@
   );
 
   const views = $derived(Object.entries(overlay.providers));
+
+  /**
+   * Lebar panel samping, satu-satunya tempat angka ini ditulis.
+   *
+   * Dipakai untuk dua hal: gaya inline panelnya, dan keputusan muat atau tidak di kanan
+   * papan. Sebelumnya angkanya juga ditulis lagi di CSS, dan dua salinan yang harus
+   * selalu sama adalah dua salinan yang cepat atau lambat tidak sama.
+   */
+  const SIDE_WIDTH = 208;
+  const SIDE_GAP = 10;
+
+  /**
+   * Panel ini duduk di LUAR papan, jadi ia bisa terdorong keluar layar — chess.com
+   * menaruh papan mepet kanan pada jendela sempit dan pada sebagian layout. Kalau ruang
+   * di kanan tidak cukup, pindah ke kiri papan.
+   *
+   * Perhitungannya ikut `overlay.rect`, yang sudah disegarkan tiap scroll, resize, dan
+   * denyut berkala — jadi tidak perlu pendengar ukuran jendela sendiri.
+   */
+  const sideOnRight = $derived(
+    window.innerWidth - (overlay.rect.left + overlay.rect.width) >= SIDE_WIDTH + SIDE_GAP * 2,
+  );
+
+  /** Baris yang didaftar = persis panah yang digambar, supaya keduanya selalu sepakat. */
+  function listed(view: ProviderView) {
+    return view.suggestions.slice(0, view.arrowCount);
+  }
 </script>
 
 {#if overlay.visible && overlay.rect.width > 0}
@@ -152,6 +182,86 @@
         {/if}
       {/each}
     </svg>
+
+    <!--
+      Daftar rekomendasi, di luar papan supaya tidak menutupi satu kotak pun. Tiap baris
+      adalah tombol: mengkliknya memainkan langkah itu, jadi tidak perlu drag sendiri.
+    -->
+    <div
+      class="side"
+      class:collapsed={!overlay.movesPanelVisible}
+      style="{sideOnRight
+        ? `left:100%; margin-left:${SIDE_GAP}px;`
+        : `right:100%; margin-right:${SIDE_GAP}px;`}{overlay.movesPanelVisible
+        ? ` width:${SIDE_WIDTH}px;`
+        : ''}"
+    >
+      <div class="bar">
+        {#if overlay.movesPanelVisible}<span class="dim">rekomendasi</span>{/if}
+        <button
+          type="button"
+          class="toggle"
+          aria-pressed={overlay.movesPanelVisible}
+          title={overlay.movesPanelVisible
+            ? 'Sembunyikan daftar langkah'
+            : 'Tampilkan daftar langkah'}
+          onclick={toggleMovesPanel}
+        >
+          {overlay.movesPanelVisible ? '×' : '☰'}
+        </button>
+      </div>
+
+      {#if overlay.movesPanelVisible}
+        {#each views as [id, view] (id)}
+          <section>
+            <div class="side-head">
+              <span class="swatch" style="background:{view.color}; border-color:{view.color}"></span>
+              <strong>{view.label}</strong>
+              {#if view.depth}<span class="dim">d{view.depth}</span>{/if}
+            </div>
+
+            {#if listed(view).length > 0}
+              <ul>
+                {#each listed(view) as s, i (s.uci)}
+                  {@const line = pvLine(overlay.fen, s.pv, { mateIn: s.mateIn })}
+                  <li>
+                    <button
+                      type="button"
+                      class="move-row"
+                      class:best={i === 0}
+                      title={`Mainkan ${s.san ?? s.uci}`}
+                      onclick={() => playSuggestion(s.uci, s.san)}
+                    >
+                      <span class="top-line">
+                        <span class="rank" style="color:{view.color}">{i + 1}</span>
+                        <span class="move">{s.san ?? s.uci}</span>
+                        <span class="score">{scoreText(s, view.kind)}</span>
+                      </span>
+
+                      <!-- Kelanjutan garisnya. Langkah pertama sudah tampil di atas, jadi
+                           yang disambung di sini mulai dari langkah kedua. -->
+                      {#if line.san.length > 1}
+                        <span class="pv" class:mate={line.mate}>
+                          {line.san.slice(1).join(' ')}{line.truncated ? ' …' : ''}
+                        </span>
+                      {/if}
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <p class="dim">{view.status === 'thinking' ? 'menghitung...' : '—'}</p>
+            {/if}
+          </section>
+        {:else}
+          <p class="dim">menunggu engine...</p>
+        {/each}
+
+        {#if overlay.manualPlay.message}
+          <p class="played">{overlay.manualPlay.message}</p>
+        {/if}
+      {/if}
+    </div>
 
     <!--
       Tombolnya ikut di dalam panel dan tetap ada saat isinya disembunyikan, supaya
@@ -279,6 +389,95 @@
     width: 100%;
     height: 100%;
     overflow: visible;
+  }
+
+  /* Panel samping duduk di luar kotak papan. `.root` sengaja tidak memotong isinya
+     (tidak ada overflow:hidden), jadi left:100% / right:100% sudah cukup untuk
+     menempelkannya di sisi luar tanpa menghitung koordinat viewport sendiri. */
+  .side {
+    pointer-events: auto;
+    position: absolute;
+    top: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 5px 7px;
+    border-radius: 6px;
+    background: rgba(24, 24, 27, 0.92);
+    color: #f4f4f5;
+    font: 11.5px/1.4 system-ui, sans-serif;
+    backdrop-filter: blur(2px);
+  }
+  /* Saat terlipat ia menyusut jadi sekadar tombol, sama seperti panel di dalam papan. */
+  .side.collapsed {
+    width: auto;
+    padding: 2px;
+    background: rgba(24, 24, 27, 0.55);
+  }
+  .side:not(.collapsed) .bar { margin-bottom: 4px; }
+  .side section + section { margin-top: 5px; padding-top: 4px; border-top: 1px solid #3f3f46; }
+
+  .side-head {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 2px;
+  }
+
+  .side ul { list-style: none; margin: 0; padding: 0; }
+  .side li + li { margin-top: 1px; }
+
+  /* Tiap baris adalah tombol selebar panel: targetnya besar, dan tidak ada bagian baris
+     yang terlihat bisa diklik tapi ternyata bukan tombol. */
+  .move-row {
+    display: block;
+    width: 100%;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: #d4d4d8;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .top-line {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  /* Kelanjutan garis: dibuat redup dan tanpa tebal supaya langkah yang benar-benar akan
+     dimainkan — baris di atasnya — tetap yang pertama tertangkap mata. Dibiarkan
+     membungkus, bukan dipotong, karena garis skakmat memang ditampilkan sampai habis. */
+  .pv {
+    display: block;
+    margin-left: 13px;
+    color: #a1a1aa;
+    font-size: 10.5px;
+    font-weight: 400;
+    line-height: 1.35;
+    word-spacing: 1px;
+  }
+  .move-row:hover .pv { color: #d4d4d8; }
+  /* Garis yang berujung skakmat pantas ditandai: itu bukan sekadar rekomendasi lain. */
+  .pv.mate { color: #fca5a5; }
+  .move-row:hover .pv.mate { color: #fecaca; }
+  .move-row:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+  .move-row:active { background: rgba(255, 255, 255, 0.2); }
+  .move-row:focus-visible { outline: 1px solid #93c5fd; }
+  .move-row.best { color: #f4f4f5; font-weight: 600; }
+  .rank { min-width: 7px; font-size: 10px; font-weight: 700; }
+  .move-row .move { flex: 1; font-variant-numeric: tabular-nums; }
+  .move-row .score { color: #a1a1aa; font-variant-numeric: tabular-nums; }
+  .move-row.best .score { color: #e4e4e7; }
+
+  .played {
+    margin: 4px 0 0;
+    padding-top: 4px;
+    border-top: 1px solid #3f3f46;
+    color: #86efac;
+    font-size: 10.5px;
   }
 
   .panel {

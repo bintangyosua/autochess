@@ -44,6 +44,25 @@ export const overlay = $state({
   panelVisible: true,
 
   /**
+   * Panel daftar rekomendasi di luar papan.
+   *
+   * Terpisah dari `panelVisible` dan bukan kembarannya: yang di dalam papan menutupi
+   * kotak sehingga sering ditutup di tengah permainan, sedangkan yang ini justru dipakai
+   * untuk mengklik langkah. Menjadikannya satu tombol berarti menutup salah satunya
+   * memaksa menutup yang lain.
+   */
+  movesPanelVisible: true,
+
+  /**
+   * Umpan balik untuk langkah yang diklik dari daftar: nama langkahnya kalau berhasil,
+   * atau alasannya kalau tidak. Mengklik lalu tidak terjadi apa-apa adalah kegagalan
+   * yang paling membingungkan, jadi selalu ada yang dikatakan.
+   */
+  manualPlay: {
+    message: '',
+  },
+
+  /**
    * Kotak papan dalam koordinat viewport. Overlay memposisikan dirinya sendiri dari sini
    * alih-alih menumpang ukuran shadow host — host-nya tidak pernah punya ukuran, dan
    * itu membuat SVG meregang sepenuh layar.
@@ -145,6 +164,17 @@ export function onPanelChanged(fn: (visible: boolean) => void): void {
 export function togglePanel(): void {
   overlay.panelVisible = !overlay.panelVisible;
   persistPanel?.(overlay.panelVisible);
+}
+
+let persistMovesPanel: ((visible: boolean) => void) | undefined;
+
+export function onMovesPanelChanged(fn: (visible: boolean) => void): void {
+  persistMovesPanel = fn;
+}
+
+export function toggleMovesPanel(): void {
+  overlay.movesPanelVisible = !overlay.movesPanelVisible;
+  persistMovesPanel?.(overlay.movesPanelVisible);
 }
 
 export function toggleArrow(id: string): void {
