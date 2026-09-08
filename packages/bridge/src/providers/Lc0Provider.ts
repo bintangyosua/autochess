@@ -9,7 +9,7 @@ import type {
 import { UciProcess } from '../uci/UciProcess.js';
 import { parseBestmove } from '../uci/parseInfo.js';
 import { createMultiPvCollector } from '../uci/collectMultiPv.js';
-import { uciLineToSan } from '../san.js';
+import { createSanner, uciLineToSan } from '../san.js';
 
 /**
  * Dua cara memakai lc0, dengan biner yang sama persis:
@@ -145,15 +145,16 @@ export class Lc0Provider implements EngineProvider {
       proc.send(`go nodes ${req.nodes ?? this.config.defaults?.nodes ?? 1}`);
       const bestmove = await finished;
 
+      const sanOf = createSanner(req.fen);
       const suggestions: Suggestion[] = [...policies.entries()]
         .sort(([, a], [, b]) => b - a)
         .slice(0, multipv)
-        .map(([uci, policy]) => ({ uci, san: uciLineToSan(req.fen, [uci])[0], policy }));
+        .map(([uci, policy]) => ({ uci, san: sanOf(uci), policy }));
 
       // Kalau verbose stats tidak terbaca (versi lc0 berbeda), setidaknya kembalikan
       // langkah pilihannya daripada mengembalikan hasil kosong.
       if (suggestions.length === 0 && bestmove.best !== '(none)') {
-        suggestions.push({ uci: bestmove.best, san: uciLineToSan(req.fen, [bestmove.best])[0] });
+        suggestions.push({ uci: bestmove.best, san: sanOf(bestmove.best) });
       }
 
       return {

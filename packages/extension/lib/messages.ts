@@ -8,6 +8,10 @@ export type RuntimeMessage =
       reqId: string;
       providerId: string;
       fen: string;
+      /** Jangkar rantai langkah, kalau riwayatnya terlacak. */
+      startFen?: string;
+      /** Langkah UCI dari `startFen` sampai `fen`. */
+      moves?: string[];
       movetimeMs?: number;
       /** Override depth dari halaman pengaturan; kalau kosong, `defaults` bridge yang berlaku. */
       depth?: number;

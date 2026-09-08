@@ -5,6 +5,14 @@ import { isRuntimeMessage, type AnalyzeReply, type RuntimeMessage, type StatusRe
 export default defineBackground(() => {
   /** reqId -> tab yang memintanya, supaya hasil dikirim balik ke tab yang benar. */
   const requesters = new Map<string, number>();
+  /**
+   * Permintaan terakhir per tab+engine, dipakai untuk membuang pendahulunya.
+   *
+   * Bridge sengaja tidak mengirim hasil untuk permintaan yang sudah digantikan — hasilnya
+   * menggambarkan posisi yang sudah lewat. Konsekuensinya reqId lama tidak pernah dihapus
+   * lewat jalur hasil, jadi ia harus dibuang di sini, saat penggantinya datang.
+   */
+  const latest = new Map<string, string>();
 
   const broadcast = async (message: RuntimeMessage) => {
     const tabs = await browser.tabs.query({ url: '*://*.chess.com/*' });
@@ -69,11 +77,19 @@ export default defineBackground(() => {
 
     if (raw.type === 'analyze') {
       const tabId = sender.tab?.id;
-      if (tabId !== undefined) requesters.set(raw.reqId, tabId);
+      if (tabId !== undefined) {
+        const key = `${tabId}:${raw.providerId}`;
+        const superseded = latest.get(key);
+        if (superseded !== undefined) requesters.delete(superseded);
+        latest.set(key, raw.reqId);
+        requesters.set(raw.reqId, tabId);
+      }
       const ok = client.analyze({
         reqId: raw.reqId,
         providerId: raw.providerId,
         fen: raw.fen,
+        startFen: raw.startFen,
+        moves: raw.moves,
         movetimeMs: raw.movetimeMs,
         depth: raw.depth,
         multipv: raw.multipv,

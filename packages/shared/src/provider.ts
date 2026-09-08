@@ -4,6 +4,17 @@ export type ProviderKind = 'strength' | 'human-like';
 
 export interface AnalysisRequest {
   fen: string;
+  /**
+   * Posisi jangkar untuk rantai langkah di `moves`, kalau riwayatnya diketahui.
+   *
+   * Engine yang cuma diberi `position fen` tidak punya riwayat, jadi ia tidak bisa
+   * melihat pengulangan posisi sama sekali — bisa menyarankan langkah yang justru
+   * menyerahkan remis, atau melewatkan pengulangan sebagai penyelamat di posisi kalah.
+   * Rantai ini yang mengembalikan penglihatan itu.
+   */
+  startFen?: string;
+  /** Langkah UCI dari `startFen` sampai `fen`. Hanya sah bersama `startFen`. */
+  moves?: string[];
   movetimeMs?: number;
   depth?: number;
   nodes?: number;

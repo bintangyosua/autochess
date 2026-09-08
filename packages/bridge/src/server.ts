@@ -8,7 +8,7 @@ import {
   type ServerMessage,
 } from '@cmr/shared';
 import { ProviderRegistry } from './providers/registry.js';
-import { fenProblem } from './san.js';
+import { fenProblem, replayUci } from './san.js';
 
 const debug = process.argv.includes('--debug');
 
@@ -96,6 +96,12 @@ async function handle(
   const problem = fenProblem(message.fen);
   if (problem) return fail('invalid_fen', problem, message.reqId);
 
+  // Rantai langkah dipakai hanya kalau ia benar-benar berujung di posisi yang diminta.
+  // Ekstensi menyimpulkannya dari susunan bidak di DOM, dan pembacaan itu bisa meleset;
+  // kalau meleset, jatuh kembali ke `position fen` saja — kehilangan deteksi pengulangan
+  // jauh lebih ringan daripada engine mencari pada posisi yang salah.
+  const chain = verifyChain(message);
+
   // Request baru membatalkan yang lama pada provider yang sama.
   const previous = active.get(message.providerId);
   if (previous && previous !== message.reqId) await entry.provider.stop();
@@ -105,6 +111,8 @@ async function handle(
     const result = await entry.provider.analyze(
       {
         fen: message.fen,
+        startFen: chain?.startFen,
+        moves: chain?.moves,
         movetimeMs: message.movetimeMs,
         depth: message.depth,
         nodes: message.nodes,
@@ -119,12 +127,38 @@ async function handle(
         }
       },
     );
-    send({ type: 'result', reqId: message.reqId, result });
+    // Dijaga sama seperti update parsial di atas. Permintaan yang sudah digantikan
+    // berarti papan sudah pindah posisi, dan hasilnya — entah pencarian yang dipotong
+    // `stop` di tengah jalan atau yang dibatalkan sebelum sempat mulai — menggambarkan
+    // posisi yang tidak ada lagi di layar. Membiarkannya lewat akan menimpa panel dengan
+    // saran untuk posisi lama, tepat pada saat posisi baru sedang dihitung.
+    if (active.get(message.providerId) === message.reqId) {
+      send({ type: 'result', reqId: message.reqId, result });
+    }
   } catch (err) {
     fail('engine_failed', err instanceof Error ? err.message : String(err), message.reqId);
   } finally {
     if (active.get(message.providerId) === message.reqId) active.delete(message.providerId);
   }
+}
+
+/**
+ * Terima rantai langkah hanya kalau replay-nya persis sampai di `fen` yang diminta.
+ * Rantai kosong tidak berguna bagi engine, jadi ikut ditolak.
+ */
+function verifyChain(
+  message: Extract<ClientMessage, { type: 'analyze' }>,
+): { startFen: string; moves: string[] } | undefined {
+  const { startFen, moves, fen } = message;
+  if (!startFen || !moves?.length) return undefined;
+
+  const replayed = replayUci(startFen, moves);
+  if (replayed === fen) return { startFen, moves };
+
+  console.warn(
+    `[bridge] rantai ${moves.length} langkah dibuang: replay tidak sampai di posisi yang diminta`,
+  );
+  return undefined;
 }
 
 /**

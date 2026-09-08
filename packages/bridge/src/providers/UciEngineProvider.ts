@@ -38,6 +38,9 @@ export interface PersonaConfig extends PersonaInfo {
   options: Record<string, string | number | boolean>;
 }
 
+/** Jarak minimum antar-update parsial ke pemanggil (ms). */
+const UPDATE_INTERVAL_MS = 60;
+
 export class UciEngineProvider implements EngineProvider {
   readonly kind: ProviderKind = 'strength';
   readonly id: string;
@@ -57,9 +60,25 @@ export class UciEngineProvider implements EngineProvider {
    */
   private supported = new Map<string, string | undefined>();
   private warned = new Set<string>();
+  /**
+   * FEN yang terakhir dianalisis proses ini, untuk memutuskan perlu `ucinewgame` atau tidak.
+   * undefined = proses masih segar, belum pernah diberi posisi.
+   */
+  private lastFen?: string;
   /** Rantai promise supaya hanya satu `go` aktif per proses engine. */
   private chain: Promise<unknown> = Promise.resolve();
-  private running = false;
+  /**
+   * Dinaikkan tiap `stop()`. Sebuah analisis menangkap nilainya saat mulai, lalu
+   * memeriksanya lagi tepat sebelum mengirim `go`.
+   *
+   * Sebelumnya ini cuma flag `running` yang baru menyala persis sebelum `go` — sesudah
+   * `ensureRunning()` dan `isReady()`, yang dua-duanya menunggu. Pembatalan yang tiba di
+   * jendela itu tidak menemukan apa pun untuk dihentikan lalu hilang, dan `go` yang sudah
+   * usang tetap terkirim: analisis untuk posisi lama jalan sampai selesai, sementara
+   * posisi yang sekarang antre di belakangnya. `stop` UCI juga tidak bisa menutup lubang
+   * itu sendiri — engine yang belum mencari mengabaikannya.
+   */
+  private stopEpoch = 0;
 
   constructor(private readonly config: UciEngineProviderConfig) {
     this.id = config.id;
@@ -82,6 +101,7 @@ export class UciEngineProvider implements EngineProvider {
     // karena dikira masih aktif.
     this.currentElo = undefined;
     this.currentPersona = undefined;
+    this.lastFen = undefined;
   }
 
   private setIfSupported(proc: UciProcess, name: string, value: string | number | boolean): void {
@@ -174,6 +194,7 @@ export class UciEngineProvider implements EngineProvider {
     req: AnalysisRequest,
     onUpdate?: (partial: AnalysisResult) => void,
   ): Promise<AnalysisResult> {
+    const epoch = this.stopEpoch;
     const proc = await this.ensureRunning();
 
     // Elo dan persona adalah setoption, bukan bagian dari `go` — jadi keduanya hanya
@@ -201,6 +222,23 @@ export class UciEngineProvider implements EngineProvider {
       dirty = true;
     }
 
+    // `ucinewgame` memerintahkan engine membuang transposition table beserta killer,
+    // history, dan counter-move heuristic. Posisi sesudah lawan jalan adalah anak dari
+    // posisi yang barusan dicari, dan TT dikunci Zobrist hash — bukan jalur — jadi isinya
+    // masih sah dan langsung terpakai. Mengirimnya tiap langkah berarti menghitung ulang
+    // dari nol, ditambah biaya mengosongkan hash (256 MB per engine di config sekarang)
+    // yang pada depth rendah bisa lebih mahal daripada pencariannya sendiri.
+    //
+    // Jadi kirim hanya saat papannya memang bukan kelanjutan: game baru, atau lompat ke
+    // posisi yang tidak berhubungan.
+    if (!isContinuation(this.lastFen, req.fen)) {
+      proc.send('ucinewgame');
+      dirty = true;
+    }
+    this.lastFen = req.fen;
+
+    // Satu barrier menutup setoption sekaligus pengosongan hash — engine boleh butuh
+    // waktu untuk yang terakhir, dan `position` tidak boleh menyusul sebelum ia selesai.
     if (dirty) await proc.isReady();
 
     const startedAt = Date.now();
@@ -216,17 +254,34 @@ export class UciEngineProvider implements EngineProvider {
       partial,
     });
 
+    // Engine mengirim ratusan baris `info` per detik dan tiap snapshot berarti sort +
+    // array baru + serialisasi ke extension. Mata manusia tidak butuh lebih dari ~16
+    // update per detik, jadi update parsial dikoalisikan; hasil akhir tetap dikirim utuh.
+    let pending: NodeJS.Timeout | undefined;
     const off = proc.onLine((line) => {
-      if (collector.feed(line)) onUpdate?.(snapshot(true));
+      if (!collector.feed(line) || !onUpdate || pending) return;
+      pending = setTimeout(() => {
+        pending = undefined;
+        onUpdate(snapshot(true));
+      }, UPDATE_INTERVAL_MS);
     });
 
     try {
-      proc.send('ucinewgame');
-      proc.send(`position fen ${req.fen}`);
+      // Dengan rantai langkah, engine melihat posisi yang sama TAPI juga tahu bagaimana
+      // posisi itu dicapai — dan hanya dengan begitu ia bisa mengenali pengulangan
+      // posisi. Rantainya sudah diverifikasi bridge, jadi di sini dipakai apa adanya.
+      proc.send(
+        req.startFen && req.moves?.length
+          ? `position fen ${req.startFen} moves ${req.moves.join(' ')}`
+          : `position fen ${req.fen}`,
+      );
+
+      // Titik pemeriksaan terakhir sebelum mesin mulai bekerja: semua `await` di atas
+      // sudah lewat, jadi satu pemeriksaan di sini menutup seluruh jendela persiapan.
+      if (this.stopEpoch !== epoch) return snapshot(false);
 
       const { goCommand, timeoutMs } = buildGoCommand(req, this.config.defaults);
       const finished = proc.waitFor((line) => parseBestmove(line), timeoutMs);
-      this.running = true;
       proc.send(goCommand);
       const bestmove = await finished;
 
@@ -240,14 +295,18 @@ export class UciEngineProvider implements EngineProvider {
       }
       return result;
     } finally {
-      this.running = false;
+      if (pending) clearTimeout(pending);
       off();
     }
   }
 
   async stop(): Promise<void> {
-    if (!this.running) return;
+    // Dinaikkan lebih dulu, tanpa syarat. Analisis yang belum sempat mengirim `go` hanya
+    // bisa tahu dirinya dibatalkan lewat angka ini — dan justru itu kasus yang dulu lolos.
+    this.stopEpoch += 1;
     try {
+      // `stop` pada engine yang sedang diam diabaikan begitu saja, jadi mengirimnya tanpa
+      // memeriksa keadaan lebih aman daripada menebak-nebak apakah pencarian sudah jalan.
       this.proc?.send('stop');
     } catch {
       // Engine sudah mati; analisis yang berjalan akan gagal sendiri lewat jalurnya.
@@ -299,4 +358,61 @@ function buildGoCommand(
   const movetime = req.movetimeMs ?? defaults?.movetimeMs ?? 800;
   // Beri kelonggaran: engine baru mengirim bestmove sedikit setelah movetime habis.
   return { goCommand: `go movetime ${movetime}`, timeoutMs: movetime + 10_000 };
+}
+
+/**
+ * Apakah `next` masuk akal sebagai kelanjutan dari `prev` dalam game yang sama?
+ *
+ * FEN dari pembacaan DOM tidak punya nomor langkah yang bisa dipercaya (diisi `0 1`),
+ * jadi penentunya adalah materi: dalam satu game, bidak hanya berkurang. Pion tidak
+ * pernah bertambah, dan bidak non-pion hanya boleh bertambah kalau ada pion yang hilang
+ * pada sisi yang sama — itu promosi.
+ *
+ * Sengaja dibuat longgar, dan arah salahnya penting. Salah menyimpulkan "lanjutan"
+ * padahal bukan hanya menyisakan entri TT basi, dan itu tidak berbahaya: entri dikunci
+ * Zobrist hash, jadi yang tidak cocok tidak akan pernah terbaca — cuma memakan tempat.
+ * Sebaliknya, salah menyimpulkan "game baru" membuang seluruh hasil pencarian yang masih
+ * sah, dan itu persis biaya yang ingin dihindari.
+ */
+export function isContinuation(prev: string | undefined, next: string): boolean {
+  if (prev === undefined) return false;
+  if (prev === next) return true;
+
+  const before = countMaterial(prev);
+  const after = countMaterial(next);
+
+  for (const color of ['w', 'b'] as const) {
+    const pawnsLost = before[color].pawns - after[color].pawns;
+    if (pawnsLost < 0) return false;
+    // Bidak baru harus dibayar dengan pion yang hilang; lebih dari itu berarti papan
+    // yang berbeda, bukan promosi.
+    if (after[color].others - before[color].others > pawnsLost) return false;
+    if (after[color].total > before[color].total) return false;
+  }
+  return true;
+}
+
+interface Material {
+  w: { pawns: number; others: number; total: number };
+  b: { pawns: number; others: number; total: number };
+}
+
+/** Hitung bidak per warna dari field pertama FEN. */
+function countMaterial(fen: string): Material {
+  const out: Material = {
+    w: { pawns: 0, others: 0, total: 0 },
+    b: { pawns: 0, others: 0, total: 0 },
+  };
+  const board = fen.split(' ', 1)[0] ?? '';
+  for (const ch of board) {
+    if (ch === '/' || (ch >= '1' && ch <= '8')) continue;
+    const side = ch === ch.toUpperCase() ? out.w : out.b;
+    // Raja tidak ikut dihitung: jumlahnya selalu satu dan tidak menambah informasi.
+    const lower = ch.toLowerCase();
+    if (lower === 'k') continue;
+    if (lower === 'p') side.pawns += 1;
+    else side.others += 1;
+    side.total += 1;
+  }
+  return out;
 }

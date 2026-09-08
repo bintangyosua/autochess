@@ -25,6 +25,10 @@ export type ClientMessage =
       reqId: string;
       providerId: string;
       fen: string;
+      /** Jangkar rantai langkah; lihat `AnalysisRequest.startFen`. */
+      startFen?: string;
+      /** Langkah UCI dari `startFen` sampai `fen`. */
+      moves?: string[];
       movetimeMs?: number;
       depth?: number;
       nodes?: number;

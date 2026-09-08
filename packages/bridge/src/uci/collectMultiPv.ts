@@ -1,6 +1,6 @@
 import type { Suggestion } from '@cmr/shared';
 import { parseInfo } from './parseInfo.js';
-import { uciLineToSan } from '../san.js';
+import { createSanner } from '../san.js';
 
 export interface MultiPvCollector {
   /** Suapi tiap baris dari engine. Mengembalikan true kalau ada perubahan berarti. */
@@ -28,6 +28,7 @@ export function createMultiPvCollector(fen: string): MultiPvCollector {
   let completed = new Map<number, Suggestion>();
   let depth: number | undefined;
   let nps: number | undefined;
+  const sanOf = createSanner(fen);
 
   const best = () => (current.size >= completed.size ? current : completed);
 
@@ -51,7 +52,7 @@ export function createMultiPvCollector(fen: string): MultiPvCollector {
       const pv = info.pv;
       current.set(info.multipv ?? 1, {
         uci: pv[0]!,
-        san: uciLineToSan(fen, pv.slice(0, 6))[0],
+        san: sanOf(pv[0]!),
         scoreCp: info.scoreCp,
         mateIn: info.mateIn,
         pv,

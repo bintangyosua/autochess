@@ -16,6 +16,7 @@ import {
   syncProviders,
 } from '../../lib/overlayState.svelte';
 import { playMove } from '../../lib/input/playMove';
+import { createPositionHistory, type TrackedPosition } from '../../lib/board/positionHistory';
 import {
   MAX_ATTEMPTS,
   autoPlayDecision,
@@ -296,16 +297,16 @@ export default defineContentScript({
     /** Depth 18 bisa makan beberapa detik; beri kelonggaran sebelum menyimpulkan hilang. */
     const WATCHDOG_MS = 25_000;
 
-    function armWatchdog(fen: string, retried = false): void {
+    function armWatchdog(position: TrackedPosition, retried = false): void {
       clearTimeout(watchdog);
-      watchdogFen = fen;
+      watchdogFen = position.fen;
       watchdog = ctx.setTimeout(() => {
-        if (awaiting.size === 0 || watchdogFen !== fen) return;
+        if (awaiting.size === 0 || watchdogFen !== position.fen) return;
         const lost = [...awaiting];
         if (!retried) {
           console.warn('[cmr] hasil tidak kembali, meminta ulang:', lost.join(', '));
-          for (const id of lost) requestAnalysis(id, fen);
-          armWatchdog(fen, true);
+          for (const id of lost) requestAnalysis(id, position);
+          armWatchdog(position, true);
           return;
         }
         console.warn('[cmr] hasil tetap tidak kembali setelah diminta ulang:', lost.join(', '));
@@ -325,13 +326,17 @@ export default defineContentScript({
       return depths[engine.id];
     }
 
-    function requestAnalysis(providerId: string, fen: string, attempt = 1): void {
+    function requestAnalysis(providerId: string, position: TrackedPosition, attempt = 1): void {
       void browser.runtime
         .sendMessage({
           type: 'analyze',
           reqId: `r${++reqId}`,
           providerId,
-          fen,
+          fen: position.fen,
+          // Rantai langkah dikirim apa adanya; bridge yang memverifikasinya sebelum
+          // dipercayakan ke engine.
+          startFen: position.startFen,
+          moves: position.moves,
           depth: depthFor(providerId),
           elo: elos[providerId],
           persona: personas[providerId],
@@ -343,7 +348,7 @@ export default defineContentScript({
             return;
           }
           if (attempt < 3) {
-            ctx.setTimeout(() => requestAnalysis(providerId, fen, attempt + 1), 500 * attempt);
+            ctx.setTimeout(() => requestAnalysis(providerId, position, attempt + 1), 500 * attempt);
             return;
           }
           console.warn('[cmr] bridge tidak menerima permintaan setelah 3 percobaan');
@@ -479,17 +484,31 @@ export default defineContentScript({
       if (overlay.autoPlay.enabled) maybeAutoPlay();
     }, 1_000);
 
+    const history = createPositionHistory();
+
     watchBoard({
       onChange: (snapshot) => {
         overlay.orientation = snapshot.orientation;
+
+        // Rantai langkah menggantikan sebagian tebakan `inferState`: hak rokade, target
+        // en passant, dan halfmove clock jadi hasil perhitungan dari posisi jangkar,
+        // bukan dibaca ulang dari sorotan kotak tiap langkah.
+        const position = history.observe({ fen: snapshot.fen!, turnKnown: snapshot.turnKnown });
+        if (position.reanchored) {
+          console.log('[cmr] rantai langkah dimulai ulang:', position.reanchored);
+        }
+
         // Mode auto memeriksa fen ini sebelum dan sesudah jeda, jadi ia harus selalu
         // menunjuk pembacaan yang sama dengan yang dikirim ke engine.
-        overlay.fen = snapshot.fen;
+        overlay.fen = position.fen;
         overlay.assumptions = snapshot.assumptions;
-        overlay.turnKnown = snapshot.turnKnown;
+        overlay.turnKnown = position.turnKnown;
         syncPosition();
 
-        console.log(`[cmr] posisi: ${snapshot.fen} (sorotan: ${snapshot.highlights.length})`);
+        console.log(
+          `[cmr] posisi: ${position.fen} (sorotan: ${snapshot.highlights.length}, ` +
+            `rantai: ${position.moves.length} langkah)`,
+        );
         markThinking();
         overlay.autoPlay.message = '';
         autoLastReason = '';
@@ -501,8 +520,8 @@ export default defineContentScript({
           markProblem('offline', 'belum ada engine dari bridge');
           return;
         }
-        for (const engine of engines) requestAnalysis(engine.id, snapshot.fen!);
-        armWatchdog(snapshot.fen!);
+        for (const engine of engines) requestAnalysis(engine.id, position);
+        armWatchdog(position);
       },
       onBoardMissing: () => markProblem('idle', 'papan tidak terbaca'),
     });
