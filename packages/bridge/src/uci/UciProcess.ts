@@ -23,6 +23,7 @@ export class UciProcess {
   private readonly listeners = new Set<LineListener>();
   private exitInfo?: { code: number | null; signal: NodeJS.Signals | null };
   private stderrTail: string[] = [];
+  private stdinBroken = false;
 
   constructor(private readonly opts: UciProcessOptions) {}
 
@@ -50,6 +51,16 @@ export class UciProcess {
 
     child.on('exit', (code, signal) => {
       this.exitInfo = { code, signal };
+      this.stdinBroken = true;
+    });
+
+    // Engine bisa mati di sela pemeriksaan `running` dan write-nya sendiri. Kalau itu
+    // terjadi, kegagalan write datang async sebagai event 'error' di stdin — tanpa
+    // listener, EPIPE itu menjatuhkan seluruh proses bridge. Tandai pipanya rusak lalu
+    // telan errornya; kematian engine sudah dilaporkan lewat 'exit'.
+    child.stdin.on('error', (err: NodeJS.ErrnoException) => {
+      this.stdinBroken = true;
+      if (this.opts.debug) console.error(`[${this.opts.path}] stdin: ${err.code ?? err.message}`);
     });
 
     child.stderr.setEncoding('utf8');
@@ -75,7 +86,7 @@ export class UciProcess {
   }
 
   send(command: string): void {
-    if (!this.child || this.exitInfo) {
+    if (!this.child || this.exitInfo || this.stdinBroken || !this.child.stdin.writable) {
       throw new Error(`Engine tidak berjalan (${this.describeExit()})`);
     }
     if (this.opts.debug) console.log(`> ${command}`);
@@ -159,7 +170,7 @@ export class UciProcess {
   }
 
   private describeExit(): string {
-    if (!this.exitInfo) return 'belum start';
+    if (!this.exitInfo) return this.stdinBroken ? 'stdin tertutup' : 'belum start';
     const { code, signal } = this.exitInfo;
     const tail = this.stderrTail.slice(-3).join(' | ');
     return `exit code=${code} signal=${signal}${tail ? `; stderr: ${tail}` : ''}`;

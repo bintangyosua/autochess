@@ -246,7 +246,12 @@ export class UciEngineProvider implements EngineProvider {
   }
 
   async stop(): Promise<void> {
-    if (this.running) this.proc?.send('stop');
+    if (!this.running) return;
+    try {
+      this.proc?.send('stop');
+    } catch {
+      // Engine sudah mati; analisis yang berjalan akan gagal sendiri lewat jalurnya.
+    }
   }
 
   async dispose(): Promise<void> {
