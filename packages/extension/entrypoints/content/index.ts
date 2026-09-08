@@ -8,6 +8,7 @@ import {
   applyResult,
   autoPlayProviderId,
   markProblem,
+  applyArrowCounts,
   markThinking,
   onArrowsChanged,
   onAutoPlayChanged,
@@ -35,6 +36,11 @@ import {
   loadPersonas,
   readEloChange,
   readPersonaChange,
+  ARROW_COUNT_KEY,
+  arrowsFor,
+  loadArrows,
+  readArrowChange,
+  type ArrowOverrides,
   loadDepths,
   loadTiming,
   readDepthChange,
@@ -58,9 +64,10 @@ const AUTO_PLAY_KEY = 'autoPlay';
 /**
  * Daftar engine, label, warna, dan setelan analisis semuanya berasal dari
  * `engines.config.json` lewat bridge. Tidak ada daftar engine kedua di sini — mengubah
- * engine cukup di satu berkas, dan permintaan analisis sengaja tidak menyertakan
- * movetime/multipv supaya `defaults` di berkas itu yang berlaku. Satu-satunya nilai yang
- * bisa ditimpa dari UI adalah depth, lewat halaman pengaturan.
+ * engine cukup di satu berkas, dan permintaan analisis hanya menyertakan nilai yang
+ * benar-benar ditimpa dari halaman pengaturan: depth, Elo, kepribadian, dan multipv
+ * (jumlah panah). Sisanya dibiarkan kosong supaya `defaults` di berkas itu yang berlaku,
+ * jadi menghapus setelan sama dengan kembali ke bawaan.
  */
 let engines: ProviderInfo[] = [];
 
@@ -84,6 +91,15 @@ let personas: PersonaOverrides = {};
  * ulang, supaya menggeser slider tidak mempercepat langkah yang sedang menunggu.
  */
 let timing: AutoTiming = DEFAULT_TIMING;
+
+/**
+ * Jumlah panah per engine dari halaman pengaturan.
+ *
+ * Angka ini dikirim ke bridge sebagai `multipv`, jadi engine menghitung persis sebanyak
+ * yang akan digambar — bukan menghitung tiga lalu membuang dua. Engine tanpa entri di
+ * sini memakai `defaults.multipv` dari `engines.config.json`.
+ */
+let arrowCounts: ArrowOverrides = {};
 
 /**
  * Terapkan setelan mode auto dari storage tanpa menulisnya balik.
@@ -142,11 +158,16 @@ export default defineContentScript({
     elos = await loadElos();
     personas = await loadPersonas();
     timing = await loadTiming();
+    arrowCounts = await loadArrows();
+
+    const multipvOf = (id: string) =>
+      arrowsFor(arrowCounts, id, engines.find((e) => e.id === id)?.defaults?.multipv);
 
     const applyProviders = (list: ProviderInfo[]) => {
       // Hanya engine yang siap yang dianalisis; yang dimatikan di config tidak muncul.
       engines = list.filter((p) => p.ready);
       syncProviders(engines, isVisible);
+      applyArrowCounts(arrowCounts, multipvOf);
     };
 
     onArrowsChanged((ids) => void browser.storage.local.set({ [ARROWS_KEY]: ids }));
@@ -195,6 +216,14 @@ export default defineContentScript({
       if (ELO_KEY in changes) elos = readEloChange(changes[ELO_KEY]?.newValue);
       if (PERSONA_KEY in changes) personas = readPersonaChange(changes[PERSONA_KEY]?.newValue);
       if (AUTO_TIMING_KEY in changes) timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
+
+      // Jumlah panah berlaku langsung untuk yang sudah tergambar — memotong daftar yang
+      // sudah ada tidak perlu menunggu analisis baru. Yang menunggu langkah berikutnya
+      // hanyalah menambah panah, karena barisnya memang belum dihitung engine.
+      if (ARROW_COUNT_KEY in changes) {
+        arrowCounts = readArrowChange(changes[ARROW_COUNT_KEY]?.newValue);
+        applyArrowCounts(arrowCounts, multipvOf);
+      }
     });
 
     const board = await waitForBoard(ctx.signal);
@@ -338,6 +367,7 @@ export default defineContentScript({
           startFen: position.startFen,
           moves: position.moves,
           depth: depthFor(providerId),
+          multipv: arrowCounts[providerId],
           elo: elos[providerId],
           persona: personas[providerId],
         })

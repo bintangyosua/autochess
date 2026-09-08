@@ -159,3 +159,60 @@ export function readPersonaChange(value: unknown): PersonaOverrides {
 export function supportsDepth(kind: string): boolean {
   return kind === 'strength';
 }
+
+/**
+ * Kunci storage untuk jumlah panah per engine.
+ *
+ * Angka ini sekaligus jadi `multipv` yang diminta ke engine, bukan sekadar pemotong di
+ * sisi tampilan. Meminta lima baris lalu menggambar satu berarti membayar penuh biaya
+ * pencarian MultiPV untuk empat baris yang langsung dibuang — dan MultiPV memang tidak
+ * gratis: makin banyak baris yang harus dijaga, makin sedikit cabang yang boleh dipangkas
+ * engine, jadi tiap barisnya lebih dangkal pada waktu yang sama.
+ *
+ * Polanya sama seperti depth: yang disimpan cuma selisih dari `engines.config.json`.
+ * Engine tanpa entri memakai `defaults.multipv` dari berkas itu.
+ */
+export const ARROW_COUNT_KEY = 'engineArrows';
+
+export type ArrowOverrides = Record<string, number>;
+
+export const ARROWS_MIN = 1;
+/** Di atas ini papan lebih banyak tertutup panah daripada terbaca. */
+export const ARROWS_MAX = 5;
+
+function sanitizeArrows(value: unknown): ArrowOverrides {
+  if (typeof value !== 'object' || value === null) return {};
+  const out: ArrowOverrides = {};
+  for (const [id, count] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof count !== 'number' || !Number.isFinite(count)) continue;
+    const rounded = Math.round(count);
+    if (rounded < ARROWS_MIN || rounded > ARROWS_MAX) continue;
+    out[id] = rounded;
+  }
+  return out;
+}
+
+export async function loadArrows(): Promise<ArrowOverrides> {
+  const stored = await browser.storage.local.get(ARROW_COUNT_KEY);
+  return sanitizeArrows(stored[ARROW_COUNT_KEY]);
+}
+
+export async function saveArrows(arrows: ArrowOverrides): Promise<void> {
+  await browser.storage.local.set({ [ARROW_COUNT_KEY]: sanitizeArrows(arrows) });
+}
+
+export function readArrowChange(value: unknown): ArrowOverrides {
+  return sanitizeArrows(value);
+}
+
+/**
+ * Berapa panah yang digambar untuk sebuah engine: pilihan pengguna kalau ada, kalau
+ * tidak `defaults.multipv` dari config, kalau tidak juga satu.
+ */
+export function arrowsFor(
+  arrows: ArrowOverrides,
+  id: string,
+  configMultipv: number | undefined,
+): number {
+  return arrows[id] ?? configMultipv ?? 1;
+}

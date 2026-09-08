@@ -15,6 +15,14 @@ export interface ProviderView {
    * di engines.config.json.
    */
   arrowVisible: boolean;
+  /**
+   * Berapa langkah teratas yang digambar sebagai panah.
+   *
+   * Ini juga `multipv` yang diminta ke engine, jadi `suggestions` biasanya sudah persis
+   * sepanjang ini. Pemotongan tetap dilakukan saat menggambar karena hasil yang sedang
+   * streaming bisa memuat sisa dari permintaan sebelumnya yang angkanya berbeda.
+   */
+  arrowCount: number;
   suggestions: Suggestion[];
   depth?: number;
   status: OverlayStatus;
@@ -70,6 +78,19 @@ export const overlay = $state({
 });
 
 /**
+ * Terapkan jumlah panah pilihan pengguna.
+ *
+ * Dipisah dari `syncProviders` karena sumbernya berbeda dan berubah pada waktu yang
+ * berbeda: daftar provider datang dari bridge, sedangkan angka ini dari storage — dan
+ * mengubahnya di halaman pengaturan tidak boleh menunggu bridge mengirim apa pun.
+ */
+export function applyArrowCounts(counts: Record<string, number>, fallback: (id: string) => number): void {
+  for (const [id, view] of Object.entries(overlay.providers)) {
+    view.arrowCount = counts[id] ?? fallback(id);
+  }
+}
+
+/**
  * Selaraskan daftar provider dengan yang dilaporkan bridge.
  *
  * Daftar engine tidak lagi ditulis di ekstensi — semuanya berasal dari
@@ -98,6 +119,7 @@ export function syncProviders(
       kind: info.kind,
       color,
       arrowVisible: isArrowVisible(info.id),
+      arrowCount: info.defaults?.multipv ?? 1,
       suggestions: [],
       status: 'idle',
     };

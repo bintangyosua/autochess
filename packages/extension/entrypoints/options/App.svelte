@@ -3,6 +3,14 @@
   import type { ProviderInfo } from '@cmr/shared';
   import type { StatusReply } from '../../lib/messages';
   import {
+    ARROW_COUNT_KEY,
+    ARROWS_MAX,
+    ARROWS_MIN,
+    arrowsFor,
+    loadArrows,
+    readArrowChange,
+    saveArrows,
+    type ArrowOverrides,
     AUTO_TIMING_KEY,
     DEFAULT_TIMING,
     DEPTH_KEY,
@@ -38,6 +46,7 @@
   let timing = $state<AutoTiming>(DEFAULT_TIMING);
   let elos = $state<EloOverrides>({});
   let personas = $state<PersonaOverrides>({});
+  let arrows = $state<ArrowOverrides>({});
 
   // Daftar engine tetap datang dari bridge — halaman ini tidak punya daftarnya sendiri,
   // jadi engine yang dimatikan di engines.config.json juga tidak muncul di sini.
@@ -70,6 +79,10 @@
     personas = values;
   });
 
+  void loadArrows().then((values) => {
+    arrows = values;
+  });
+
   // Popup dan tab lain bisa mengubah nilai yang sama; ikuti perubahannya.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && Array.isArray(changes.providers?.newValue)) {
@@ -83,6 +96,9 @@
     }
     if (area === 'local' && PERSONA_KEY in changes) {
       personas = readPersonaChange(changes[PERSONA_KEY]?.newValue);
+    }
+    if (area === 'local' && ARROW_COUNT_KEY in changes) {
+      arrows = readArrowChange(changes[ARROW_COUNT_KEY]?.newValue);
     }
     if (area === 'local' && AUTO_TIMING_KEY in changes) {
       timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
@@ -128,6 +144,23 @@
     const { [provider.id]: _removed, ...rest } = elos;
     elos = rest;
     void saveElos(elos);
+  }
+
+  /** Jumlah panah yang berlaku: pilihan pengguna, kalau tidak `defaults.multipv`. */
+  function arrowsOf(provider: ProviderInfo): number {
+    return arrowsFor(arrows, provider.id, provider.defaults?.multipv);
+  }
+
+  function setArrows(provider: ProviderInfo, raw: number): void {
+    const count = Math.min(ARROWS_MAX, Math.max(ARROWS_MIN, Math.round(raw)));
+    arrows = { ...arrows, [provider.id]: count };
+    void saveArrows(arrows);
+  }
+
+  function resetArrows(provider: ProviderInfo): void {
+    const { [provider.id]: _removed, ...rest } = arrows;
+    arrows = rest;
+    void saveArrows(arrows);
   }
 
   function personaOf(provider: ProviderInfo): string {
@@ -186,13 +219,19 @@
     depths = {};
     elos = {};
     personas = {};
+    arrows = {};
     void saveDepths(depths);
     void saveElos(elos);
     void savePersonas(personas);
+    void saveArrows(arrows);
   }
 
   const anyOverride = $derived(
-    Object.keys(depths).length + Object.keys(elos).length + Object.keys(personas).length > 0,
+    Object.keys(depths).length +
+      Object.keys(elos).length +
+      Object.keys(personas).length +
+      Object.keys(arrows).length >
+      0,
   );
 </script>
 
@@ -267,7 +306,7 @@
   <header>
     <h2>Engine</h2>
     <p class="lead">
-      Depth, kekuatan, dan kepribadian per engine. Semuanya berlaku untuk semua tab dan
+      Depth, jumlah panah, kekuatan, dan kepribadian per engine. Semuanya berlaku untuk semua tab dan
       menimpa nilai di <code>engines.config.json</code> tanpa mengubah berkasnya. Pilihan
       yang tersedia berbeda-beda karena tiap engine memang menyediakan tombol yang
       berbeda.
@@ -331,6 +370,48 @@
             <p class="fine">
               Seberapa jauh engine berpikir. Kalau depth-nya rendah, ia sudah lebih lemah
               daripada Elo mana pun di bawah — dan slider Kekuatan jadi tidak berefek.
+            </p>
+          </div>
+
+          <div class="sub">
+            <div class="top">
+              <span class="sublabel">Panah</span>
+              {#if arrows[provider.id] !== undefined}
+                <button type="button" class="link" onclick={() => resetArrows(provider)}>
+                  kembalikan ke bawaan
+                </button>
+              {:else if provider.defaults?.multipv !== undefined}
+                <span class="tag">bawaan</span>
+              {/if}
+              <span class="value">{arrowsOf(provider)}</span>
+            </div>
+            <div class="row">
+              <input
+                type="range"
+                min={ARROWS_MIN}
+                max={ARROWS_MAX}
+                step="1"
+                aria-label={`Jumlah panah ${provider.label}`}
+                value={arrowsOf(provider)}
+                oninput={(e) => setArrows(provider, e.currentTarget.valueAsNumber)}
+              />
+              <input
+                type="number"
+                min={ARROWS_MIN}
+                max={ARROWS_MAX}
+                step="1"
+                aria-label={`Jumlah panah ${provider.label} (angka)`}
+                value={arrowsOf(provider)}
+                onchange={(e) => setArrows(provider, e.currentTarget.valueAsNumber)}
+              />
+            </div>
+            <!-- Ini bukan sekadar setelan tampilan, dan bedanya perlu dikatakan: angkanya
+                 dikirim ke engine sebagai MultiPV. -->
+            <p class="fine">
+              Berapa langkah teratas yang digambar di papan, lengkap dengan skornya. Yang
+              pertama tebal, sisanya makin tipis. Angkanya juga dipakai sebagai
+              <code>MultiPV</code> — jadi menaikkannya membuat engine menjaga lebih banyak
+              baris sekaligus, dan tiap baris jadi sedikit lebih dangkal pada depth yang sama.
             </p>
           </div>
 

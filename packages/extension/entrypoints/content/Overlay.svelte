@@ -8,56 +8,19 @@
     togglePanel,
     type ProviderView,
   } from '../../lib/overlayState.svelte';
+  import { buildArrow, layoutLabels, scoreText, type Arrow } from '../../lib/overlay/arrows';
 
 
-  /**
-   * Papan digambar sebagai grid 8x8 lewat viewBox, jadi koordinat panah ditulis dalam
-   * satuan kotak dan ikut menyesuaikan berapa pun ukuran papan di layar.
-   */
-  function toXY(square: string): { x: number; y: number } {
-    const file = square.charCodeAt(0) - 96; // a=1
-    const rank = Number(square[1]);
-    return overlay.orientation === 'white'
-      ? { x: file - 0.5, y: 8 - rank + 0.5 }
-      : { x: 8 - file + 0.5, y: rank - 0.5 };
-  }
-
-  interface Arrow {
-    key: string;
-    x1: number; y1: number; x2: number; y2: number;
-    color: string; width: number; opacity: number;
-    /** Kosong = garis penuh. Diisi hanya untuk panah balasan. */
-    dash: string;
-    head: number;
-  }
-
-  function buildArrow(key: string, uci: string, view: ProviderView, reply: boolean): Arrow {
-    const from = toXY(uci.slice(0, 2));
-    const to = toXY(uci.slice(2, 4));
-    // Pendekkan ujung panah supaya kepalanya berhenti di tepi kotak tujuan,
-    // bukan menutupi bidak yang ada di sana.
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const trim = 0.3;
-    const width = view.kind === 'strength' ? 0.13 : 0.1;
-    const opacity = view.kind === 'strength' ? 0.9 : 0.75;
-    return {
-      key,
-      x1: from.x, y1: from.y,
-      x2: to.x - (dx / len) * trim,
-      y2: to.y - (dy / len) * trim,
-      color: view.color,
-      width: reply ? width * 0.55 : width,
-      opacity: reply ? opacity * 0.45 : opacity,
-      dash: reply ? '0.17 0.13' : '',
-      head: reply ? 2.6 : 3.2,
-    };
-  }
+  type Suggestion = ProviderView['suggestions'][number];
 
   /**
-   * Per provider digambar dua panah: langkah terbaik untuk sisi yang jalan, dan —
-   * kalau ada — balasan terbaik atas langkah itu.
+   * Per provider digambar sebanyak `arrowCount` langkah teratas, masing-masing dengan
+   * skornya, ditambah — kalau ada — balasan terbaik atas langkah pertama.
+   *
+   * Jumlahnya diatur per engine di halaman pengaturan dan sekaligus jadi `multipv` yang
+   * diminta ke engine, jadi daftar ini biasanya sudah tepat sepanjang itu. `slice` tetap
+   * dipakai karena hasil yang sedang streaming bisa memuat sisa dari permintaan
+   * sebelumnya, saat angkanya masih berbeda.
    *
    * Panah balasan diambil dari langkah kedua principal variation, jadi tidak menambah
    * beban engine sama sekali. Gunanya paling terasa saat giliran lawan: kalau lawan
@@ -72,25 +35,46 @@
    * tidak ada PV, dan `pv?.[1]` di bawah otomatis kosong tanpa perlu pengecualian.
    */
   const arrows = $derived<Arrow[]>(
+    layoutLabels(
     Object.entries(overlay.providers).flatMap(([id, view]) => {
-      const best = view.suggestions[0];
-      if (!best || !view.arrowVisible) return [];
+      if (!view.arrowVisible) return [];
 
-      const out = [buildArrow(id, best.uci, view, false)];
-      const reply = best.pv?.[1];
-      if (reply) out.push(buildArrow(`${id}-reply`, reply, view, true));
+      const out = view.suggestions
+        .slice(0, view.arrowCount)
+        .map((s, rank) =>
+          buildArrow({
+            key: `${id}-${rank}`,
+            uci: s.uci,
+            color: view.color,
+            kind: view.kind,
+            orientation: overlay.orientation,
+            rank,
+            label: scoreText(s, view.kind),
+          }),
+        );
+
+      // Panah balasan hanya untuk langkah terbaik. Menggambarnya untuk tiap alternatif
+      // akan melipatgandakan garis di papan demi jawaban atas langkah yang bahkan belum
+      // tentu dimainkan.
+      const reply = view.suggestions[0]?.pv?.[1];
+      if (reply) {
+        out.push(
+          buildArrow({
+            key: `${id}-reply`,
+            uci: reply,
+            color: view.color,
+            kind: view.kind,
+            orientation: overlay.orientation,
+            rank: 0,
+            reply: true,
+          }),
+        );
+      }
       return out;
     }),
+    ),
   );
 
-  function scoreText(s: Suggestion, kind: ProviderView['kind']): string {
-    if (s.mateIn !== undefined) return `#${s.mateIn}`;
-    if (kind === 'human-like' && s.policy !== undefined) return `${(s.policy * 100).toFixed(0)}%`;
-    if (s.scoreCp !== undefined) return (s.scoreCp > 0 ? '+' : '') + (s.scoreCp / 100).toFixed(2);
-    return '';
-  }
-
-  type Suggestion = ProviderView['suggestions'][number];
   const views = $derived(Object.entries(overlay.providers));
 </script>
 
@@ -131,6 +115,41 @@
           opacity={arrow.opacity}
           marker-end="url(#head-{arrow.key})"
         />
+      {/each}
+
+      <!--
+        Skor digambar sesudah semua garis supaya tidak ada panah yang menimpanya.
+
+        Latarnya pil pekat berwarna engine dengan teks putih, bukan teks berwarna yang
+        digaris-tepi. Garis tepi harus setebal seperempat badan huruf supaya terlihat di
+        atas papan, dan setebal itu ia memakan bentuk hurufnya sendiri — angkanya jadi
+        gempal dan buyar. Pil memindahkan kontras ke latar, jadi hurufnya bisa tetap
+        bersih, dan warnanya tetap menunjukkan panah ini milik engine yang mana.
+      -->
+      {#each arrows as arrow (arrow.key + '-label')}
+        {#if arrow.label}
+          <g opacity={Math.min(1, arrow.opacity + 0.3)}>
+            <rect
+              x={arrow.labelX - arrow.labelW / 2}
+              y={arrow.labelY - arrow.labelH / 2}
+              width={arrow.labelW}
+              height={arrow.labelH}
+              rx={arrow.labelH / 2}
+              fill={arrow.color}
+              stroke="rgba(0, 0, 0, 0.45)"
+              stroke-width="0.022"
+            />
+            <text
+              x={arrow.labelX}
+              y={arrow.labelY}
+              fill="#fff"
+              font-size={arrow.labelSize}
+              font-weight="700"
+              text-anchor="middle"
+              dominant-baseline="central"
+            >{arrow.label}</text>
+          </g>
+        {/if}
       {/each}
     </svg>
 
@@ -243,6 +262,15 @@
     position: fixed;
     pointer-events: none;
     z-index: 2147483000;
+  }
+
+  /* Angka tabular membuat taksiran lebar pil di CHAR_WIDTH bisa diandalkan: tanpa ini
+     lebar tiap digit berbeda-beda dan pil bisa kesempitan untuk angka tertentu saja.
+     Teksnya juga tidak boleh ikut terseleksi saat bidak diseret melintasinya. */
+  .arrows text {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
   }
 
   .arrows {
