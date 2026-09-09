@@ -216,3 +216,46 @@ export function arrowsFor(
 ): number {
   return arrows[id] ?? configMultipv ?? 1;
 }
+
+/**
+ * Kunci storage untuk engine yang dimatikan dari halaman pengaturan.
+ *
+ * Ini saudara dekat `enabled: false` di `engines.config.json`, tapi di sisi ekstensi:
+ * di sana engine dimatikan permanen dan bridge tidak pernah menjalankannya, di sini
+ * engine yang sudah siap dilewati begitu saja — tidak diminta analisis dan tidak
+ * muncul di overlay. Bedanya cuma butuh satu klik untuk dibalik, tanpa menyentuh
+ * berkas config dan tanpa restart bridge.
+ *
+ * Polanya sama seperti setelan lain: yang disimpan hanya selisihnya. Engine tanpa entri
+ * dianggap menyala, jadi menghapus setelan berarti kembali ke bawaan (aktif).
+ */
+export const ENGINE_ENABLED_KEY = 'engineEnabled';
+
+export type EnabledOverrides = Record<string, boolean>;
+
+function sanitizeEnabled(value: unknown): EnabledOverrides {
+  if (typeof value !== 'object' || value === null) return {};
+  const out: EnabledOverrides = {};
+  for (const [id, on] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof on === 'boolean') out[id] = on;
+  }
+  return out;
+}
+
+export async function loadEnabled(): Promise<EnabledOverrides> {
+  const stored = await browser.storage.local.get(ENGINE_ENABLED_KEY);
+  return sanitizeEnabled(stored[ENGINE_ENABLED_KEY]);
+}
+
+export async function saveEnabled(enabled: EnabledOverrides): Promise<void> {
+  await browser.storage.local.set({ [ENGINE_ENABLED_KEY]: sanitizeEnabled(enabled) });
+}
+
+export function readEnabledChange(value: unknown): EnabledOverrides {
+  return sanitizeEnabled(value);
+}
+
+/** Menyala kecuali dimatikan eksplisit — engine baru langsung ikut tanpa perlu setelan. */
+export function engineEnabled(enabled: EnabledOverrides, id: string): boolean {
+  return enabled[id] !== false;
+}

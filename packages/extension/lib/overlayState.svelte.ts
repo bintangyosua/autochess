@@ -260,18 +260,26 @@ function flush(id: string): void {
   view.status = 'ready';
 }
 
-export function markThinking(): void {
+/**
+ * Tandai engine sedang berpikir. Tanpa `only`, seluruh papan direset — itu yang dipakai
+ * saat posisi berubah. Dengan `only`, cuma satu engine yang ditandai: engine yang baru
+ * dinyalakan di tengah giliran ikut menghitung posisi yang sama, dan hasil engine lain
+ * yang sudah tergambar tidak ada alasan untuk dihapus.
+ */
+export function markThinking(only?: string): void {
   for (const [id, timer] of timers) {
+    if (only !== undefined && id !== only) continue;
     clearTimeout(timer);
     timers.delete(id);
     pending.delete(id);
   }
-  for (const view of Object.values(overlay.providers)) {
+  for (const [id, view] of Object.entries(overlay.providers)) {
+    if (only !== undefined && id !== only) continue;
     view.suggestions = [];
     view.depth = undefined;
     view.status = 'thinking';
   }
-  overlay.note = '';
+  if (only === undefined) overlay.note = '';
 }
 
 export function markProblem(status: OverlayStatus, note = ''): void {

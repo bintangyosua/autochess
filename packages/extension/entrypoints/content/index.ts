@@ -42,6 +42,11 @@ import {
   loadArrows,
   readArrowChange,
   type ArrowOverrides,
+  ENGINE_ENABLED_KEY,
+  engineEnabled,
+  loadEnabled,
+  readEnabledChange,
+  type EnabledOverrides,
   loadDepths,
   loadTiming,
   readDepthChange,
@@ -113,6 +118,28 @@ let timing: AutoTiming = DEFAULT_TIMING;
 let arrowCounts: ArrowOverrides = {};
 
 /**
+ * Engine yang dimatikan dari halaman pengaturan. Yang mati dibuang dari daftar aktif,
+ * jadi ia tidak diminta analisis sama sekali — bukan dihitung lalu disembunyikan
+ * panahnya. Efeknya sama seperti `enabled: false` di `engines.config.json`, bedanya
+ * bisa dibalik seketika tanpa menyentuh berkas itu dan tanpa restart bridge.
+ */
+let enabledEngines: EnabledOverrides = {};
+
+/**
+ * Daftar mentah dari bridge, sebelum disaring. Disimpan karena penyaringnya bisa
+ * berubah sendiri: menyalakan engine di halaman pengaturan harus bisa mengembalikannya
+ * tanpa menunggu bridge mengirim ulang daftarnya.
+ */
+let allProviders: ProviderInfo[] = [];
+
+/**
+ * Posisi terakhir yang terbaca dari papan. Dipegang supaya engine yang baru dinyalakan
+ * bisa langsung diminta menganalisis posisi sekarang — kalau harus menunggu langkah
+ * berikutnya, menyalakan engine di tengah giliran terlihat seperti tidak berfungsi.
+ */
+let lastPosition: TrackedPosition | undefined;
+
+/**
  * Terapkan setelan mode auto dari storage tanpa menulisnya balik.
  *
  * Nilai mentahnya sengaja diperiksa satu per satu: isi storage bisa berasal dari versi
@@ -176,13 +203,17 @@ export default defineContentScript({
     personas = await loadPersonas();
     timing = await loadTiming();
     arrowCounts = await loadArrows();
+    enabledEngines = await loadEnabled();
 
     const multipvOf = (id: string) =>
       arrowsFor(arrowCounts, id, engines.find((e) => e.id === id)?.defaults?.multipv);
 
     const applyProviders = (list: ProviderInfo[]) => {
-      // Hanya engine yang siap yang dianalisis; yang dimatikan di config tidak muncul.
-      engines = list.filter((p) => p.ready);
+      allProviders = list;
+      // Dua saringan yang berbeda asalnya: `ready` datang dari bridge (binari ada,
+      // engine mau start), sedangkan sakelar di halaman pengaturan adalah pilihanmu.
+      // Yang gugur di salah satunya tidak dianalisis dan tidak muncul di overlay.
+      engines = list.filter((p) => p.ready && engineEnabled(enabledEngines, p.id));
       syncProviders(engines, isVisible);
       applyArrowCounts(arrowCounts, multipvOf);
     };
@@ -244,6 +275,28 @@ export default defineContentScript({
       if (ARROW_COUNT_KEY in changes) {
         arrowCounts = readArrowChange(changes[ARROW_COUNT_KEY]?.newValue);
         applyArrowCounts(arrowCounts, multipvOf);
+      }
+
+      // Mematikan engine berlaku seketika: ia hilang dari overlay lewat syncProviders.
+      // Menyalakannya juga tidak menunggu langkah berikutnya — posisi sekarang langsung
+      // diminta ulang, kalau tidak sakelarnya terlihat tidak berfungsi sampai lawan jalan.
+      if (ENGINE_ENABLED_KEY in changes) {
+        const before = new Set(engines.map((e) => e.id));
+        enabledEngines = readEnabledChange(changes[ENGINE_ENABLED_KEY]?.newValue);
+        applyProviders(allProviders);
+        // Selama papan belum ketemu, tidak ada analisis berjalan dan tidak ada posisi
+        // untuk diminta — daftar yang baru disaring sudah cukup.
+        const position = lastPosition;
+        if (!position) return;
+        const active = new Set(engines.map((e) => e.id));
+        // Hasil dari engine yang baru dimatikan tidak akan pernah dipakai; membiarkannya
+        // di daftar tunggu hanya membuat watchdog menyimpulkan bridge diam.
+        for (const id of [...awaiting]) if (!active.has(id)) awaiting.delete(id);
+        for (const engine of engines) {
+          if (before.has(engine.id)) continue;
+          markThinking(engine.id);
+          requestAnalysis(engine.id, position);
+        }
       }
     });
 
@@ -545,6 +598,7 @@ export default defineContentScript({
         // en passant, dan halfmove clock jadi hasil perhitungan dari posisi jangkar,
         // bukan dibaca ulang dari sorotan kotak tiap langkah.
         const position = history.observe({ fen: snapshot.fen!, turnKnown: snapshot.turnKnown });
+        lastPosition = position;
         if (position.reanchored) {
           console.log('[cmr] rantai langkah dimulai ulang:', position.reanchored);
         }

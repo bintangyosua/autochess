@@ -2,7 +2,16 @@
   import { browser } from 'wxt/browser';
   import type { ProviderInfo } from '@cmr/shared';
   import type { StatusReply } from '../../lib/messages';
-  import { DEPTH_KEY, readDepthChange, supportsDepth, type DepthOverrides } from '../../lib/settings';
+  import {
+    DEPTH_KEY,
+    ENGINE_ENABLED_KEY,
+    engineEnabled,
+    readDepthChange,
+    readEnabledChange,
+    supportsDepth,
+    type DepthOverrides,
+    type EnabledOverrides,
+  } from '../../lib/settings';
 
   // Jangan menamai variabel `state`: `$state` akan dibaca Svelte sebagai akses store
   // bernama `state`, bukan rune.
@@ -10,6 +19,7 @@
   let detail = $state<string | null>(null);
   let providers = $state<ProviderInfo[]>([]);
   let depths = $state<DepthOverrides>({});
+  let enabled = $state<EnabledOverrides>({});
 
   const LABEL: Record<string, string> = {
     connected: 'terhubung',
@@ -30,10 +40,17 @@
   // status harus diikuti terus lewat storage.session, bukan difoto sekali.
   void browser.storage.session.get(['bridgeState', 'bridgeDetail', 'providers']).then(apply);
   void browser.storage.local.get(DEPTH_KEY).then((v) => (depths = readDepthChange(v[DEPTH_KEY])));
+  void browser.storage.local
+    .get(ENGINE_ENABLED_KEY)
+    .then((v) => (enabled = readEnabledChange(v[ENGINE_ENABLED_KEY])));
 
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && DEPTH_KEY in changes) {
       depths = readDepthChange(changes[DEPTH_KEY]?.newValue);
+      return;
+    }
+    if (area === 'local' && ENGINE_ENABLED_KEY in changes) {
+      enabled = readEnabledChange(changes[ENGINE_ENABLED_KEY]?.newValue);
       return;
     }
     if (area !== 'session') return;
@@ -59,8 +76,12 @@
    * pendek pun terlihat seperti tumpukan peringatan. Sekarang alasannya cukup ditulis
    * sekali untuk seluruh kelompok.
    */
-  const ready = $derived(providers.filter((p) => p.ready));
-  const disabled = $derived(providers.filter((p) => !p.ready));
+  const on = (p: ProviderInfo) => engineEnabled(enabled, p.id);
+  const ready = $derived(providers.filter((p) => p.ready && on(p)));
+  // Yang dimatikan lewat sakelar di halaman pengaturan ikut ke kelompok ini: dari sisi
+  // papan hasilnya sama saja — tidak ada panah — jadi menampilkannya sebagai "siap"
+  // hanya akan terbaca seperti engine yang diam tanpa sebab.
+  const disabled = $derived(providers.filter((p) => !p.ready || !on(p)));
 
   /** Depth yang benar-benar dipakai: pilihan pengguna kalau ada, kalau tidak bawaan. */
   function depthOf(provider: ProviderInfo): number | undefined {
@@ -122,7 +143,10 @@
             <li>
               <span class="dot"></span>
               <span class="name">{provider.label}</span>
-              <span class="problem">{provider.problem ?? 'dimatikan di engines.config.json'}</span>
+              <span class="problem">
+                {provider.problem ??
+                  (on(provider) ? 'dimatikan di engines.config.json' : 'dimatikan di pengaturan')}
+              </span>
             </li>
           {/each}
         </ul>

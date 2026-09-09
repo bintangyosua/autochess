@@ -211,6 +211,50 @@
       "defaultPersona": "default"
     },
     {
+      "id": "berserk",
+      "label": "Berserk 14",
+      "kind": "strength",
+      "type": "uci",
+      "enabled": true,
+      "path": "models/berserk/berserk-14-avx2.exe",
+      "options": {
+        "Threads": 2,
+        "Hash": 256
+      },
+      "defaults": {
+        "depth": 4,
+        "multipv": 3
+      },
+      "color": "#dc2626",
+      "personas": [
+        {
+          "id": "default",
+          "label": "Seimbang",
+          "hint": "bawaan engine",
+          "options": {
+            "Contempt": 0
+          }
+        },
+        {
+          "id": "aggressive",
+          "label": "Agresif",
+          "hint": "hindari remis, dorong posisi tajam",
+          "options": {
+            "Contempt": 60
+          }
+        },
+        {
+          "id": "defensive",
+          "label": "Bertahan",
+          "hint": "terima remis, main aman",
+          "options": {
+            "Contempt": -60
+          }
+        }
+      ],
+      "defaultPersona": "default"
+    },
+    {
       "id": "leela",
       "label": "Leela 791556",
       "kind": "strength",

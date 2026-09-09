@@ -38,6 +38,12 @@
     type DepthOverrides,
     type EloOverrides,
     type PersonaOverrides,
+    ENGINE_ENABLED_KEY,
+    engineEnabled,
+    loadEnabled,
+    readEnabledChange,
+    saveEnabled,
+    type EnabledOverrides,
   } from '../../lib/settings';
 
   let providers = $state<ProviderInfo[]>([]);
@@ -47,6 +53,7 @@
   let elos = $state<EloOverrides>({});
   let personas = $state<PersonaOverrides>({});
   let arrows = $state<ArrowOverrides>({});
+  let enabled = $state<EnabledOverrides>({});
 
   // Daftar engine tetap datang dari bridge — halaman ini tidak punya daftarnya sendiri,
   // jadi engine yang dimatikan di engines.config.json juga tidak muncul di sini.
@@ -83,6 +90,10 @@
     arrows = values;
   });
 
+  void loadEnabled().then((values) => {
+    enabled = values;
+  });
+
   // Popup dan tab lain bisa mengubah nilai yang sama; ikuti perubahannya.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && Array.isArray(changes.providers?.newValue)) {
@@ -100,12 +111,37 @@
     if (area === 'local' && ARROW_COUNT_KEY in changes) {
       arrows = readArrowChange(changes[ARROW_COUNT_KEY]?.newValue);
     }
+    if (area === 'local' && ENGINE_ENABLED_KEY in changes) {
+      enabled = readEnabledChange(changes[ENGINE_ENABLED_KEY]?.newValue);
+    }
     if (area === 'local' && AUTO_TIMING_KEY in changes) {
       timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
     }
   });
 
-  const searchers = $derived(providers.filter((p) => supportsDepth(p.kind)));
+  // Semua engine ditampilkan, bukan hanya pencari: sakelar nyala/mati berlaku untuk
+  // semuanya, dan engine mode policy yang tak punya depth pun tetap perlu bisa
+  // dimatikan dari sini. Setelan yang tidak berlaku untuknya disembunyikan per blok.
+  const listed = $derived(providers);
+
+  function isOn(provider: ProviderInfo): boolean {
+    return engineEnabled(enabled, provider.id);
+  }
+
+  /**
+   * Nilai bawaannya menyala, jadi menyalakan kembali berarti menghapus entrinya — bukan
+   * menyimpan `true`. Dengan begitu peta ini hanya berisi engine yang benar-benar
+   * dimatikan, dan engine baru di config langsung ikut tanpa perlu setelan.
+   */
+  function toggle(provider: ProviderInfo, on: boolean): void {
+    if (on) {
+      const { [provider.id]: _removed, ...rest } = enabled;
+      enabled = rest;
+    } else {
+      enabled = { ...enabled, [provider.id]: false };
+    }
+    void saveEnabled(enabled);
+  }
 
   /** Nilai yang sedang berlaku: pilihan pengguna kalau ada, kalau tidak bawaan config. */
   function effective(provider: ProviderInfo): number {
@@ -315,25 +351,45 @@
 
   {#if !loaded}
     <p class="empty">Memuat...</p>
-  {:else if searchers.length === 0}
+  {:else if listed.length === 0}
     <p class="empty">
-      Belum ada engine pencari dari bridge. Jalankan <code>pnpm bridge</code>, lalu buka
+      Belum ada engine dari bridge. Jalankan <code>pnpm bridge</code>, lalu buka
       halaman ini lagi.
     </p>
   {:else}
     <ul>
-      {#each searchers as provider (provider.id)}
+      {#each listed as provider (provider.id)}
         {@const custom = depths[provider.id] !== undefined}
         {@const value = effective(provider)}
-        <li class:off={!provider.ready}>
+        <li class:off={!provider.ready || !isOn(provider)}>
           <div class="top">
-            <span class="dot" class:ready={provider.ready}></span>
+            <span class="dot" class:ready={provider.ready && isOn(provider)}></span>
             <span class="name">{provider.label}</span>
+            <!-- Sakelarnya di baris nama, bukan di dalam blok setelan: ini bukan salah
+                 satu dari setelan itu, melainkan yang menentukan semuanya berlaku atau
+                 tidak. -->
+            <label class="switch">
+              <input
+                type="checkbox"
+                aria-label={`Aktifkan ${provider.label}`}
+                checked={isOn(provider)}
+                onchange={(e) => toggle(provider, e.currentTarget.checked)}
+              />
+              <span>{isOn(provider) ? 'aktif' : 'mati'}</span>
+            </label>
           </div>
 
           <!-- Depth diberi label sendiri seperti Kekuatan dan Kepribadian. Tanpa itu,
                slider paling atas adalah satu-satunya yang tak bernama, dan tidak ada cara
                menebak bahwa "d2" di kanan adalah judulnya. -->
+          {#if !isOn(provider)}
+            <p class="fine off-note">
+              Dimatikan: tidak diminta menghitung dan panahnya tidak digambar. Setelan di
+              bawah tetap tersimpan dan berlaku lagi begitu dinyalakan.
+            </p>
+          {/if}
+
+          {#if supportsDepth(provider.kind)}
           <div class="sub first">
             <div class="top">
               <span class="sublabel">Depth</span>
@@ -381,8 +437,9 @@
               sekitar depth 12 daftarnya benar-benar panjang.
             </p>
           </div>
+          {/if}
 
-          <div class="sub">
+          <div class="sub" class:first={!supportsDepth(provider.kind)}>
             <div class="top">
               <span class="sublabel">Panah</span>
               {#if arrows[provider.id] !== undefined}
@@ -503,9 +560,15 @@
       <!-- Mode policy tidak punya kedalaman untuk diatur; katakan sekali di sini supaya
            orang tidak mencari-cari setelan Maia yang memang tidak ada. -->
       <p class="note">
-        Engine manusiawi (Maia) tidak muncul di sini: mode policy hanya menghitung satu
-        node, jadi tidak ada depth yang bisa diatur. Kekuatannya sudah melekat pada bobot
-        yang dipakai — pilih Maia 1300, 1500, atau 1900 di <code>engines.config.json</code>.
+        Engine manusiawi (Maia) tidak punya setelan depth: mode policy hanya menghitung
+        satu node. Kekuatannya melekat pada bobot yang dipakai — pilih Maia 1300, 1500,
+        atau 1900 di <code>engines.config.json</code>.
+      </p>
+      <p class="note">
+        Sakelar aktif/mati di sini hanya berlaku di ekstensi: engine tetap dijalankan
+        bridge, cuma tidak diminta menghitung dan tidak muncul di overlay. Untuk
+        mematikannya sampai bridge tidak menjalankannya sama sekali, pakai
+        <code>"enabled": false</code> di <code>engines.config.json</code>.
       </p>
       <p class="note">
         Stockfish tidak punya pilihan kepribadian karena engine-nya memang tidak
@@ -601,6 +664,19 @@
   }
   .empty { color: #78716c; }
 
+  .switch {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #78716c;
+    font-size: 11.5px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .switch input { accent-color: #2563eb; margin: 0; cursor: pointer; }
+  .off-note { margin-top: 6px; }
+
   .link {
     padding: 0;
     border: 0;
@@ -638,7 +714,7 @@
     select { border-color: #44403c; background: #1c1917; }
     .sub { border-top-color: #292524; }
     .sublabel, .fine { color: #a8a29e; }
-    .lead, .tag, .empty, .note { color: #a8a29e; }
+    .lead, .tag, .empty, .note, .switch { color: #a8a29e; }
     .value { color: #d6d3d1; }
     footer button { border-color: #44403c; background: #232020; }
     footer button:hover:not(:disabled) { background: #292524; }
