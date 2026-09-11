@@ -9,7 +9,8 @@
     togglePanel,
     type ProviderView,
   } from '../../lib/overlayState.svelte';
-  import { buildArrow, layoutLabels, scoreText, type Arrow } from '../../lib/overlay/arrows';
+  import { buildArrow, layoutLabels, scoreText, toXY, type Arrow } from '../../lib/overlay/arrows';
+  import { findThreats, threatColor } from '../../lib/overlay/threats';
   import { playSuggestion } from '../../lib/input/playSuggestion';
   import { pvLine } from '../../lib/overlay/pv';
 
@@ -78,6 +79,17 @@
     ),
   );
 
+  /**
+   * Kotak yang disorot karena bidakmu di sana kalah material kalau ditukar habis.
+   *
+   * Sepenuhnya lepas dari engine: masukannya cuma FEN dan sisi mana yang kamu mainkan,
+   * jadi sorotannya sudah ada sejak posisi terbaca — tidak menunggu analisis selesai,
+   * dan tetap ada saat semua engine dimatikan.
+   */
+  const threats = $derived(
+    overlay.threatsVisible ? findThreats(overlay.fen, overlay.orientation) : [],
+  );
+
   const views = $derived(Object.entries(overlay.providers));
 
   /**
@@ -134,6 +146,39 @@
           </marker>
         {/each}
       </defs>
+
+      <!--
+        Sorotan ancaman digambar paling awal, jadi ia berada di bawah semua panah.
+        Urutannya penting: sorotan menutupi satu kotak penuh, dan kalau digambar
+        belakangan ia akan memudarkan panah yang kebetulan melintasinya.
+
+        Bentuknya bingkai tebal, bukan kotak penuh berwarna. Kotak penuh dengan opacity
+        serendah apa pun tetap mengubah warna bidak di atasnya — dan bidak yang berubah
+        warna justru yang paling perlu dikenali sekilas. Bingkai menaruh warnanya di
+        tepi kotak, tempat yang memang kosong.
+      -->
+      {#each threats as threat (threat.square)}
+        {@const at = toXY(threat.square, overlay.orientation)}
+        {@const color = threatColor(threat.level)}
+        <g>
+          <rect
+            x={at.x - 0.5} y={at.y - 0.5}
+            width="1" height="1"
+            fill={color}
+            fill-opacity="0.16"
+          />
+          <!-- Bingkainya digambar masuk setengah lebar garis supaya tidak tumpah ke
+               kotak tetangga; SVG menggambar stroke di tengah tepi, bukan di dalamnya. -->
+          <rect
+            x={at.x - 0.5 + 0.045} y={at.y - 0.5 + 0.045}
+            width={1 - 0.09} height={1 - 0.09}
+            fill="none"
+            stroke={color}
+            stroke-width="0.09"
+            stroke-opacity="0.9"
+          />
+        </g>
+      {/each}
 
       {#each arrows as arrow (arrow.key)}
         <line

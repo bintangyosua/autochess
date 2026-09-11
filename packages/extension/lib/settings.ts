@@ -259,3 +259,31 @@ export function readEnabledChange(value: unknown): EnabledOverrides {
 export function engineEnabled(enabled: EnabledOverrides, id: string): boolean {
   return enabled[id] !== false;
 }
+
+/**
+ * Kunci storage untuk sorotan kotak yang terancam.
+ *
+ * Tidak seperti setelan di atasnya, ini satu nilai untuk seluruh ekstensi, bukan peta
+ * per engine — perhitungannya sama sekali tidak melibatkan engine. Ancaman dibaca dari
+ * posisi itu sendiri, jadi ia tidak punya id engine untuk dikaitkan.
+ *
+ * Bawaannya menyala: hanya `false` eksplisit yang mematikan. Pola yang sama dipakai
+ * panel dan panah, dan artinya sama — nilai yang belum pernah ditulis, atau tersisa
+ * dari versi lama dalam bentuk yang tak terduga, jatuh ke perilaku bawaan.
+ */
+export const THREATS_KEY = 'threatHighlight';
+
+export const DEFAULT_THREATS = true;
+
+export function sanitizeThreats(value: unknown): boolean {
+  return value !== false;
+}
+
+export async function loadThreats(): Promise<boolean> {
+  const stored = await browser.storage.local.get(THREATS_KEY);
+  return sanitizeThreats(stored[THREATS_KEY]);
+}
+
+export async function saveThreats(on: boolean): Promise<void> {
+  await browser.storage.local.set({ [THREATS_KEY]: on === true });
+}

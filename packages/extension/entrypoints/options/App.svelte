@@ -44,6 +44,11 @@
     readEnabledChange,
     saveEnabled,
     type EnabledOverrides,
+    THREATS_KEY,
+    loadThreats,
+    sanitizeThreats,
+    saveThreats,
+    DEFAULT_THREATS,
   } from '../../lib/settings';
 
   let providers = $state<ProviderInfo[]>([]);
@@ -54,6 +59,7 @@
   let personas = $state<PersonaOverrides>({});
   let arrows = $state<ArrowOverrides>({});
   let enabled = $state<EnabledOverrides>({});
+  let threats = $state(DEFAULT_THREATS);
 
   // Daftar engine tetap datang dari bridge — halaman ini tidak punya daftarnya sendiri,
   // jadi engine yang dimatikan di engines.config.json juga tidak muncul di sini.
@@ -94,6 +100,10 @@
     enabled = values;
   });
 
+  void loadThreats().then((value) => {
+    threats = value;
+  });
+
   // Popup dan tab lain bisa mengubah nilai yang sama; ikuti perubahannya.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && Array.isArray(changes.providers?.newValue)) {
@@ -113,6 +123,9 @@
     }
     if (area === 'local' && ENGINE_ENABLED_KEY in changes) {
       enabled = readEnabledChange(changes[ENGINE_ENABLED_KEY]?.newValue);
+    }
+    if (area === 'local' && THREATS_KEY in changes) {
+      threats = sanitizeThreats(changes[THREATS_KEY]?.newValue);
     }
     if (area === 'local' && AUTO_TIMING_KEY in changes) {
       timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
@@ -238,6 +251,16 @@
     void saveTiming(timing);
   }
 
+  /**
+   * Bawaannya menyala, tapi yang disimpan tetap nilai apa adanya — bukan dihapus saat
+   * menyala seperti sakelar per engine. Di sana peta setelan memang harus tetap kosong
+   * supaya engine baru ikut bawaan; di sini tidak ada engine yang bisa menyusul.
+   */
+  function setThreats(on: boolean): void {
+    threats = on;
+    void saveThreats(on);
+  }
+
   function resetTiming(): void {
     timing = DEFAULT_TIMING;
     void saveTiming(timing);
@@ -275,6 +298,32 @@
   <header>
     <h1>Pengaturan</h1>
   </header>
+
+  <section class="block">
+    <div class="top">
+      <h2>Sorotan ancaman</h2>
+      <label class="switch">
+        <input
+          type="checkbox"
+          aria-label="Aktifkan sorotan ancaman"
+          checked={threats}
+          onchange={(e) => setThreats(e.currentTarget.checked)}
+        />
+        <span>{threats ? 'aktif' : 'mati'}</span>
+      </label>
+    </div>
+    <p class="lead">
+      Menandai kotak tempat bidakmu kalah material kalau lawan menyerangnya dan
+      tukar-menukar di kotak itu dijalankan sampai habis. Merah untuk kerugian sebesar
+      bidak minor atau lebih, kuning untuk yang lebih kecil.
+    </p>
+    <p class="lead">
+      Tidak melibatkan engine sama sekali: hitungannya dari posisi di papan, jadi
+      sorotannya muncul sebelum analisis selesai dan tetap ada walau semua engine
+      dimatikan. Karena itu ia juga tidak tahu soal serangan ganda atau taktik dua
+      langkah — yang dijawab hanya “apa yang bisa hilang di kotak ini”.
+    </p>
+  </section>
 
   <section class="block">
     <div class="top">
@@ -675,6 +724,9 @@
     user-select: none;
   }
   .switch input { accent-color: #2563eb; margin: 0; cursor: pointer; }
+  /* `.block label` mematok lebar 34px untuk label slider di blok yang sama; sakelar
+     di judul blok bukan salah satunya dan butuh lebar sepanjang teksnya. */
+  .block .switch { width: auto; }
   .off-note { margin-top: 6px; }
 
   .link {

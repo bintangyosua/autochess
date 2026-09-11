@@ -54,6 +54,15 @@ export const overlay = $state({
   movesPanelVisible: true,
 
   /**
+   * Sorotan kotak untuk bidak sendiri yang terancam.
+   *
+   * Berdiri sendiri dari panah dan panel karena sumbernya juga berbeda: sorotan ini
+   * dihitung dari posisi, tanpa engine sama sekali. Mematikannya tidak menghemat apa
+   * pun di sisi engine — yang dihemat cuma kotak yang tertutup warna.
+   */
+  threatsVisible: true,
+
+  /**
    * Umpan balik untuk langkah yang diklik dari daftar: nama langkahnya kalau berhasil,
    * atau alasannya kalau tidak. Mengklik lalu tidak terjadi apa-apa adalah kegagalan
    * yang paling membingungkan, jadi selalu ada yang dikatakan.

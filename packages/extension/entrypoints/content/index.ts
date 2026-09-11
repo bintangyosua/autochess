@@ -52,6 +52,9 @@ import {
   readDepthChange,
   sanitizeTiming,
   supportsDepth,
+  THREATS_KEY,
+  loadThreats,
+  sanitizeThreats,
   type AutoTiming,
   type DepthOverrides,
   type EloOverrides,
@@ -203,6 +206,7 @@ export default defineContentScript({
     personas = await loadPersonas();
     timing = await loadTiming();
     arrowCounts = await loadArrows();
+    overlay.threatsVisible = await loadThreats();
     enabledEngines = await loadEnabled();
 
     const multipvOf = (id: string) =>
@@ -256,6 +260,12 @@ export default defineContentScript({
 
       const movesPanel = changes[MOVES_PANEL_KEY]?.newValue;
       if (typeof movesPanel === 'boolean') overlay.movesPanelVisible = movesPanel;
+
+      // Sorotan ancaman tidak perlu analisis ulang: ia dihitung dari FEN yang sudah
+      // dipegang overlay, jadi menyalakannya langsung menggambar posisi sekarang.
+      if (THREATS_KEY in changes) {
+        overlay.threatsVisible = sanitizeThreats(changes[THREATS_KEY]?.newValue);
+      }
 
       if (AUTO_PLAY_KEY in changes) {
         applyAutoPlaySetting(changes[AUTO_PLAY_KEY]?.newValue);
