@@ -11,9 +11,11 @@
     "typecheck": "pnpm -r typecheck",
     "build:firefox": "pnpm --filter @cmr/extension exec wxt build -b firefox",
     "android": "powershell -ExecutionPolicy Bypass -File scripts/android.ps1",
-    "android:pair": "powershell -ExecutionPolicy Bypass -File scripts/android.ps1 -Pair"
+    "android:pair": "powershell -ExecutionPolicy Bypass -File scripts/android.ps1 -Pair",
+    "android:qr": "powershell -ExecutionPolicy Bypass -File scripts/android.ps1 -Qr"
   },
   "devDependencies": {
+    "qrcode-terminal": "^0.12.0",
     "typescript": "^5.7.2"
   },
   "packageManager": "pnpm@11.24.0"

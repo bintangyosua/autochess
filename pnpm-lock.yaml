@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      qrcode-terminal:
+        specifier: ^0.12.0
+        version: 0.12.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -894,6 +897,10 @@ packages:
   publish-browser-extension@6.1.1:
     resolution: {integrity: sha512-ovfBOz+cZIOBHZ+oxTfpv1kSGU7ruzy8CXoFGvhXsUbJuty45srGzf1ufEePs69virOWXfFbhZRoNQUdgPvwXA==}
     engines: {node: '>=22.0.0'}
+    hasBin: true
+
+  qrcode-terminal@0.12.0:
+    resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
     hasBin: true
 
   quansync@0.2.11:
@@ -1850,6 +1857,8 @@ snapshots:
       '@topcli/prompts': 4.0.0
       cac: 7.0.0
       tasuku: 2.3.0
+
+  qrcode-terminal@0.12.0: {}
 
   quansync@0.2.11: {}
 
