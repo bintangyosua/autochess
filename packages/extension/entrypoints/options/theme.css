@@ -1,0 +1,333 @@
+/**
+ * Sistem desain neumorphism untuk halaman pengaturan.
+ *
+ * Satu aturan yang menentukan segalanya: permukaan dan elemen di atasnya punya warna
+ * yang sama persis. Yang membedakan kartu dari latarnya bukan warna dan bukan garis,
+ * melainkan dua bayangan — gelap di kanan-bawah, terang di kiri-atas — seolah cahaya
+ * datang dari kiri atas dan bentuknya ditekan keluar dari permukaan yang sama.
+ *
+ * Karena itu semua warna di sini diturunkan dari satu `--surface`. Mengganti satu nilai
+ * itu menggeser seluruh halaman tanpa ada yang tertinggal, dan tidak ada elemen yang
+ * boleh memakai latar sendiri kecuali ia memang bukan bagian dari permukaan (chip yang
+ * tercentang, sorotan aksen).
+ *
+ * Batasnya juga perlu disebut: neumorphism hidup dari kontras rendah, dan kontras rendah
+ * adalah cara paling mudah membuat antarmuka yang tidak terbaca. Jadi kontras rendah
+ * hanya dipakai untuk BENTUK — kartu, alur, kedalaman. Semua TEKS memakai `--ink` dan
+ * turunannya, yang sengaja dijaga jauh dari warna permukaan, dan semua yang bisa
+ * ditekan mendapat penanda aksen atau perubahan kedalaman yang jelas saat ditekan.
+ */
+
+:root {
+  /* Permukaan tunggal. Semua yang lain turunan darinya. */
+  --surface: #e7ebf2;
+  /*
+   * Kemiringan permukaan: sedikit lebih terang di kiri-atas, sedikit lebih gelap di
+   * kanan-bawah. Dua warna ini yang membuat bentuk terasa MELENGKUNG, bukan sekadar
+   * kotak datar yang kebetulan punya bayangan. Tanpa ia, bayangan seberapa pun lembutnya
+   * tetap terbaca sebagai kertas yang ditempel di dinding.
+   */
+  --surface-hi: #f2f5fa;
+  --surface-lo: #d6dbe4;
+  /* Bayangan gelap dan terang. Bukan hitam transparan: neumorphism butuh bayangan yang
+     merupakan versi lebih gelap dari permukaannya, bukan kabut abu-abu di atasnya. */
+  --shade: #b3bbcb;
+  --glow: #ffffff;
+
+  /* Teks. Kontras tinggi dengan sengaja — lihat catatan di atas. */
+  --ink: #2a2f3a;
+  --ink-soft: #5a6273;
+  --ink-faint: #7d8595;
+
+  --accent: #4c63d2;
+  --accent-soft: #dde3f7;
+  --warn: #9a6b1f;
+  --ok: #2f8a4e;
+
+  /*
+   * Permukaan melengkung, dipakai bersama `--raise`. Sudutnya 145deg dan bukan 135deg:
+   * bidang miring yang tidak persis sejajar diagonal membuat cahayanya terbaca seperti
+   * jatuh dari satu sumber, bukan seperti pola yang dihitung.
+   */
+  --fill-raise: linear-gradient(145deg, var(--surface-hi), var(--surface-lo));
+  /* Kebalikannya, untuk yang tenggelam: gelap di tepi yang menghadap cahaya. */
+  --fill-press: linear-gradient(145deg, var(--surface-lo), var(--surface-hi));
+
+  /*
+   * Jarak dan kaburnya jauh lebih besar daripada bayangan Material biasa, dan itu
+   * intinya: bayangan neumorphism yang pendek dan tajam menghasilkan bentuk yang kaku.
+   * Kabur selalu dua kali jarak — perbandingan itu yang membuat tepinya meleleh alih-alih
+   * berhenti mendadak.
+   */
+  --raise: 11px 11px 22px var(--shade), -11px -11px 22px var(--glow);
+  --raise-sm: 6px 6px 12px var(--shade), -6px -6px 12px var(--glow);
+  --raise-lift: 16px 16px 32px var(--shade), -16px -16px 32px var(--glow);
+  /* Ditekan ke dalam permukaan: untuk alur slider, kolom isian, dan tombol yang aktif. */
+  --press: inset 7px 7px 14px var(--shade), inset -7px -7px 14px var(--glow);
+  --press-sm: inset 4px 4px 8px var(--shade), inset -4px -4px 8px var(--glow);
+
+  /*
+   * Sudut yang jauh lebih bulat daripada antarmuka pada umumnya. Bentuk neumorphism
+   * meniru benda yang dicetak dari satu bahan lunak, dan bahan lunak tidak punya sudut
+   * tajam — radius kecil adalah satu-satunya hal yang paling cepat membuatnya terlihat
+   * seperti kotak biasa yang diberi bayangan.
+   */
+  --r-lg: 28px;
+  --r-md: 18px;
+  --r-sm: 14px;
+
+  /* Satu kurva untuk semua gerakan: berangkat cepat, mendarat pelan. */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  color-scheme: light;
+}
+
+/*
+ * Mode gelap bukan sekadar warna yang dibalik.
+ *
+ * Dua hal yang harus berbeda. Bayangan terangnya tidak boleh putih — putih di atas
+ * permukaan gelap terbaca sebagai garis, bukan cahaya. Dan jarak antara `--shade` dan
+ * permukaannya harus JAUH lebih besar daripada yang terasa benar saat menulisnya: mata
+ * membaca selisih terang secara nisbi, jadi selisih yang sudah cukup di permukaan terang
+ * akan hilang sama sekali di permukaan gelap, dan kartunya rata dengan latar.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #2b2f38;
+    --surface-hi: #343943;
+    --surface-lo: #23262d;
+    --shade: #13151a;
+    --glow: #3d434f;
+
+    --ink: #e6eaf2;
+    --ink-soft: #a9b1c0;
+    --ink-faint: #868e9c;
+
+    --accent: #8ea2ff;
+    --accent-soft: #313a5c;
+    --warn: #d9a441;
+    --ok: #5cc98a;
+
+    color-scheme: dark;
+  }
+}
+
+/*
+ * Latar halaman tidak rata betul: ada cahaya samar di kiri atas yang meredup ke kanan
+ * bawah. Permukaan yang benar-benar satu warna adalah hal kedua yang membuat neumorphism
+ * terasa kaku — seluruh bahasa ini bertumpu pada satu sumber cahaya, dan sumber cahaya
+ * yang tidak meninggalkan jejak apa pun di latarnya sendiri tidak meyakinkan.
+ */
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 800px at 12% 0%, var(--surface-hi), transparent 60%),
+    var(--surface);
+  color: var(--ink);
+  font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* --- kontrol asli yang tidak bisa diwakili komponen ---------------------------------- */
+
+/*
+ * Slider digambar dari nol. `accent-color` memberi warna, tapi tidak memberi kedalaman —
+ * dan kedalaman adalah satu-satunya bahasa yang dipakai halaman ini. Alurnya ditekan ke
+ * dalam, ibu jarinya menonjol keluar: bentuk yang langsung terbaca bisa digeser tanpa
+ * perlu warna mencolok.
+ */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Alur yang lebih dalam dan lebih tebal. Alur tipis terbaca sebagai garis yang digambar
+   di atas permukaan, bukan sebagai celah yang dikeruk ke dalamnya. */
+input[type='range']::-webkit-slider-runnable-track {
+  height: 16px;
+  border-radius: 999px;
+  background: var(--fill-press);
+  box-shadow: var(--press-sm);
+}
+
+input[type='range']::-moz-range-track {
+  height: 16px;
+  border-radius: 999px;
+  background: var(--fill-press);
+  box-shadow: var(--press-sm);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  /* Setengah selisih tinggi ibu jari dan alur, dinaikkan supaya keduanya setitik tengah. */
+  margin-top: -6px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fill-raise);
+  box-shadow: var(--raise-sm);
+  transition:
+    box-shadow 200ms var(--ease),
+    transform 200ms var(--ease);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fill-raise);
+  box-shadow: var(--raise-sm);
+  transition:
+    box-shadow 200ms var(--ease),
+    transform 200ms var(--ease);
+}
+
+/* Sedikit membesar saat disentuh — benda lunak memberi tahu bahwa ia bisa dipegang
+   dengan berubah bentuk, bukan dengan berganti warna. */
+input[type='range']:hover::-webkit-slider-thumb {
+  transform: scale(1.08);
+}
+input[type='range']:hover::-moz-range-thumb {
+  transform: scale(1.08);
+}
+
+/* Dipegang: mengecil dan tenggelam, dengan aksen supaya posisinya tetap terbaca walau
+   bayangannya sedang mendatar. */
+input[type='range']:active::-webkit-slider-thumb {
+  background: var(--accent);
+  box-shadow: var(--press-sm);
+  transform: scale(0.94);
+}
+input[type='range']:active::-moz-range-thumb {
+  background: var(--accent);
+  box-shadow: var(--press-sm);
+  transform: scale(0.94);
+}
+
+input[type='range']:focus-visible {
+  outline: none;
+}
+input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--raise-sm), 0 0 0 3px var(--accent-soft);
+}
+input[type='range']:focus-visible::-moz-range-thumb {
+  box-shadow: var(--raise-sm), 0 0 0 3px var(--accent-soft);
+}
+
+input[type='range']:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* Kotak centang: kotak yang ditekan ke dalam, dengan aksen penuh saat tercentang.
+   `accent-color` saja sudah memberi kontras yang cukup, dan menggambar ulang kotak
+   centang berarti kehilangan perilaku bawaannya di setiap platform. */
+input[type='checkbox'] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* --- tipografi bersama ---------------------------------------------------------------
+ *
+ * Kelas-kelas ini tinggal di berkas global, bukan di masing-masing komponen bagian.
+ * Alasannya bukan penghematan baris: `lead` dan `fine` adalah dua tingkat penjelasan
+ * yang artinya harus sama di seluruh halaman — kalau satu bagian menggambarnya sedikit
+ * berbeda, pembaca kehilangan petunjuk mana yang penjelasan utama dan mana catatan kaki.
+ */
+
+/*
+ * Satu kalimat ringkas yang tinggal terlihat di kartu. Penjelasan panjangnya pindah ke
+ * balik tombol tanya di baris judul, jadi kelas ini sekarang memang cuma untuk satu
+ * kalimat — bukan untuk paragraf yang kebetulan pendek.
+ */
+.lead {
+  margin: 0 0 16px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.fine {
+  margin: 8px 0 0;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/*
+ * Judul kelompok di dalam kartu: satu blok bisa punya beberapa rentang bersebelahan.
+ * Flex, karena sebagian di antaranya membawa tombol tanya sendiri — catatan yang dulu
+ * berdiri sebagai paragraf di bawah slidernya.
+ */
+.group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 20px 0 4px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Angka yang sedang berlaku, selalu di ujung kanan barisnya. */
+.value {
+  margin-left: auto;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: var(--fill-press);
+  box-shadow: var(--press-sm);
+  color: var(--ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tag {
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+code {
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: var(--fill-press);
+  box-shadow: var(--press-sm);
+  font-size: 0.92em;
+}
+
+/*
+ * Gerakan di halaman ini semuanya hiasan — mengangkat kartu, membesarkan ibu jari
+ * slider. Tidak satu pun menyampaikan informasi yang hilang kalau ia dimatikan, jadi
+ * mematikannya seluruhnya aman.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+
+  input[type='range']:hover::-webkit-slider-thumb,
+  input[type='range']:active::-webkit-slider-thumb {
+    transform: none;
+  }
+  input[type='range']:hover::-moz-range-thumb,
+  input[type='range']:active::-moz-range-thumb {
+    transform: none;
+  }
+}
