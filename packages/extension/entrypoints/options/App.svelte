@@ -49,6 +49,10 @@
     sanitizeThreats,
     saveThreats,
     DEFAULT_THREATS,
+    CURSOR_DOT_KEY,
+    loadCursorDot,
+    saveCursorDot,
+    sanitizeCursorDot,
   } from '../../lib/settings';
 
   let providers = $state<ProviderInfo[]>([]);
@@ -60,6 +64,7 @@
   let arrows = $state<ArrowOverrides>({});
   let enabled = $state<EnabledOverrides>({});
   let threats = $state(DEFAULT_THREATS);
+  let cursorDot = $state(false);
 
   // Daftar engine tetap datang dari bridge — halaman ini tidak punya daftarnya sendiri,
   // jadi engine yang dimatikan di engines.config.json juga tidak muncul di sini.
@@ -104,6 +109,10 @@
     threats = value;
   });
 
+  void loadCursorDot().then((value) => {
+    cursorDot = value;
+  });
+
   // Popup dan tab lain bisa mengubah nilai yang sama; ikuti perubahannya.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && Array.isArray(changes.providers?.newValue)) {
@@ -129,6 +138,9 @@
     }
     if (area === 'local' && AUTO_TIMING_KEY in changes) {
       timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
+    }
+    if (area === 'local' && CURSOR_DOT_KEY in changes) {
+      cursorDot = sanitizeCursorDot(changes[CURSOR_DOT_KEY]?.newValue);
     }
   });
 
@@ -251,6 +263,20 @@
     void saveTiming(timing);
   }
 
+  /** Aturan dorong-mendorongnya sama, hanya rentangnya yang berbeda. */
+  function setCaptureTiming(edge: 'minMs' | 'maxMs', raw: number): void {
+    const capture = { ...timing.capture, [edge]: raw };
+    if (edge === 'minMs' && capture.minMs > capture.maxMs) capture.maxMs = capture.minMs;
+    if (edge === 'maxMs' && capture.maxMs < capture.minMs) capture.minMs = capture.maxMs;
+    timing = sanitizeTiming({ ...timing, capture });
+    void saveTiming(timing);
+  }
+
+  function setCursorDot(on: boolean): void {
+    cursorDot = on;
+    void saveCursorDot(on);
+  }
+
   /**
    * Bawaannya menyala, tapi yang disimpan tetap nilai apa adanya — bukan dihapus saat
    * menyala seperti sakelar per engine. Di sana peta setelan memang harus tetap kosong
@@ -267,7 +293,10 @@
   }
 
   const timingChanged = $derived(
-    timing.minMs !== DEFAULT_TIMING.minMs || timing.maxMs !== DEFAULT_TIMING.maxMs,
+    timing.minMs !== DEFAULT_TIMING.minMs ||
+      timing.maxMs !== DEFAULT_TIMING.maxMs ||
+      timing.capture.minMs !== DEFAULT_TIMING.capture.minMs ||
+      timing.capture.maxMs !== DEFAULT_TIMING.capture.maxMs,
   );
 
   function seconds(ms: number): string {
@@ -333,13 +362,23 @@
       {:else}
         <span class="tag">bawaan</span>
       {/if}
-      <span class="value">{seconds(timing.minMs)}–{seconds(timing.maxMs)}s</span>
+      <span class="value">
+        {seconds(timing.minMs)}–{seconds(timing.maxMs)}s ·
+        {seconds(timing.capture.minMs)}–{seconds(timing.capture.maxMs)}s
+      </span>
     </div>
     <p class="lead">
       Waktu acak antara hasil engine dan bidak mendarat di papan. Angka ini untuk langkah
       utuh — jeda antar-klik diambil dari dalamnya, bukan ditambahkan di atasnya. Waktu
       berpikir engine sendiri diatur lewat depth di bawah.
     </p>
+    <p class="lead">
+      Dua rentang, dipilih menurut langkahnya. Langkah memakan biasanya pantas lebih
+      cepat: bidak lawan sudah berdiri di kotak tujuan, jadi langkah itu tidak perlu
+      dicari — berlama-lama sebelum memakan justru terbaca lebih aneh daripada langsung.
+    </p>
+
+    <h3 class="range-head">Langkah tenang</h3>
 
     <div class="row">
       <label for="tmin">min</label>
@@ -386,6 +425,79 @@
       />
       <span class="unit">ms</span>
     </div>
+
+    <h3 class="range-head">Langkah memakan</h3>
+
+    <div class="row">
+      <label for="cmin">min</label>
+      <input
+        id="cmin"
+        type="range"
+        min={TIMING_MIN_MS}
+        max={TIMING_MAX_MS}
+        step={TIMING_STEP_MS}
+        value={timing.capture.minMs}
+        oninput={(e) => setCaptureTiming('minMs', e.currentTarget.valueAsNumber)}
+      />
+      <input
+        type="number"
+        min={TIMING_MIN_MS}
+        max={TIMING_MAX_MS}
+        step={TIMING_STEP_MS}
+        aria-label="Jeda minimum saat memakan (ms)"
+        value={timing.capture.minMs}
+        onchange={(e) => setCaptureTiming('minMs', e.currentTarget.valueAsNumber)}
+      />
+      <span class="unit">ms</span>
+    </div>
+
+    <div class="row">
+      <label for="cmax">maks</label>
+      <input
+        id="cmax"
+        type="range"
+        min={TIMING_MIN_MS}
+        max={TIMING_MAX_MS}
+        step={TIMING_STEP_MS}
+        value={timing.capture.maxMs}
+        oninput={(e) => setCaptureTiming('maxMs', e.currentTarget.valueAsNumber)}
+      />
+      <input
+        type="number"
+        min={TIMING_MIN_MS}
+        max={TIMING_MAX_MS}
+        step={TIMING_STEP_MS}
+        aria-label="Jeda maksimum saat memakan (ms)"
+        value={timing.capture.maxMs}
+        onchange={(e) => setCaptureTiming('maxMs', e.currentTarget.valueAsNumber)}
+      />
+      <span class="unit">ms</span>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="top">
+      <h2>Tampilkan kursor maya</h2>
+      <label class="switch">
+        <input
+          type="checkbox"
+          aria-label="Tampilkan penanda kursor maya"
+          checked={cursorDot}
+          onchange={(e) => setCursorDot(e.currentTarget.checked)}
+        />
+        <span>{cursorDot ? 'aktif' : 'mati'}</span>
+      </label>
+    </div>
+    <p class="lead">
+      Titik merah kecil yang menunjukkan posisi kursor menurut chess.com — bukan kursor
+      aslimu. Halaman web tidak bisa memindahkan kursor sistem, jadi seluruh gerakan yang
+      dikirim mode auto tidak terlihat sama sekali tanpa penanda ini.
+    </p>
+    <p class="lead">
+      Alat pemeriksa, bukan bagian dari permainan: gunanya melihat jalur dan titik klik
+      benar-benar mendarat di kotak yang dimaksud. Titiknya tidak bisa diklik dan tidak
+      mengubah apa pun, tapi ia terlihat oleh siapa saja yang melihat layarmu.
+    </p>
   </section>
 
   <header>
@@ -657,6 +769,17 @@
     font-size: 11.5px;
   }
   .unit { color: #a8a29e; font-size: 11px; }
+  /*
+   * Pemisah antara dua rentang jeda. Namanya sengaja panjang: kelas `.sub` sudah dipakai
+   * blok per-engine di bawah, dan menamai ini `.sub` juga membuat seluruh blok itu ikut
+   * berubah bentuk — persis yang pernah terjadi.
+   */
+  .range-head {
+    margin: 14px 0 2px;
+    color: #78716c;
+    font-size: 11.5px;
+    font-weight: 600;
+  }
   .lead { margin: 0 0 18px; color: #57534e; font-size: 12.5px; }
   code { background: #e7e5e4; padding: 1px 4px; border-radius: 3px; font-size: 11.5px; }
 

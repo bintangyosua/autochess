@@ -18,8 +18,10 @@ import {
   overlay,
   syncProviders,
 } from '../../lib/overlayState.svelte';
-import { cancelGlide, playMove } from '../../lib/input/playMove';
+import { cancelGlide, pieceAt, playMove } from '../../lib/input/playMove';
 import { createIdleDrift } from '../../lib/input/idleDrift';
+import { showCursorDot } from '../../lib/input/cursorDot';
+import { isCapture } from '../../lib/input/capture';
 import { createPositionHistory, type TrackedPosition } from '../../lib/board/positionHistory';
 import {
   MAX_ATTEMPTS,
@@ -55,6 +57,9 @@ import {
   sanitizeTiming,
   supportsDepth,
   THREATS_KEY,
+  CURSOR_DOT_KEY,
+  loadCursorDot,
+  sanitizeCursorDot,
   loadThreats,
   sanitizeThreats,
   type AutoTiming,
@@ -209,6 +214,7 @@ export default defineContentScript({
     timing = await loadTiming();
     arrowCounts = await loadArrows();
     overlay.threatsVisible = await loadThreats();
+    showCursorDot(await loadCursorDot());
     enabledEngines = await loadEnabled();
 
     const multipvOf = (id: string) =>
@@ -280,6 +286,7 @@ export default defineContentScript({
       if (ELO_KEY in changes) elos = readEloChange(changes[ELO_KEY]?.newValue);
       if (PERSONA_KEY in changes) personas = readPersonaChange(changes[PERSONA_KEY]?.newValue);
       if (AUTO_TIMING_KEY in changes) timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
+      if (CURSOR_DOT_KEY in changes) showCursorDot(sanitizeCursorDot(changes[CURSOR_DOT_KEY]?.newValue));
 
       // Jumlah panah berlaku langsung untuk yang sudah tergambar — memotong daftar yang
       // sudah ada tidak perlu menunggu analisis baru. Yang menunggu langkah berikutnya
@@ -569,7 +576,15 @@ export default defineContentScript({
       const style: 'click' | 'drag' = autoAttempts % 2 === 1 ? 'click' : 'drag';
       // Satu anggaran waktu untuk seluruh langkah, lalu dibagi jadi jeda berpikir dan
       // jeda antar-klik — bukan dua jeda yang saling menumpuk.
-      const total = autoPlayDelayMs(timing);
+      // Langkah memakan punya anggaran waktunya sendiri, biasanya lebih pendek. Sifat
+      // langkahnya dibaca dari papan yang sedang tampil, bukan dari FEN hasil rantai
+      // langkah kita: kalau rantai itu sedang meleset, yang salah cuma pilihan jeda
+      // kalau sumbernya papan — sedangkan menebak dari FEN yang salah bisa berarti
+      // memilih jeda berdasarkan posisi yang tidak ada.
+      const board = findBoard();
+      const capture =
+        !!board && isCapture({ from: best.uci.slice(0, 2), to: best.uci.slice(2, 4) }, (square) => pieceAt(board, square));
+      const total = autoPlayDelayMs(capture ? timing.capture : timing);
       const { thinkMs, clickMs } = splitAutoDelay(total);
       overlay.autoPlay.message = `${best.san ?? best.uci} dalam ${(total / 1000).toFixed(1)}s`;
       // Sisa perjalanan kursor masih berlangsung setelah jeda antar-klik habis, jadi

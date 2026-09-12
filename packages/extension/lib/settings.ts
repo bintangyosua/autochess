@@ -51,10 +51,30 @@ export function readDepthChange(value: unknown): DepthOverrides {
  */
 export const AUTO_TIMING_KEY = 'autoTiming';
 
-export interface AutoTiming {
+/** Satu rentang waktu acak, dalam milidetik. */
+export interface TimingRange {
   /** Total waktu satu langkah, dari hasil engine sampai bidak mendarat. */
   minMs: number;
   maxMs: number;
+}
+
+/**
+ * Dua anggaran waktu, bukan satu.
+ *
+ * Bentuknya sengaja meletakkan rentang tenang di tingkat atas, bukan di dalam `quiet`:
+ * dengan begitu nilai yang sudah tersimpan dari versi sebelumnya tetap terbaca apa
+ * adanya, dan pengguna tidak mendapati jedanya diam-diam kembali ke bawaan setelah
+ * ekstensi diperbarui.
+ */
+export interface AutoTiming extends TimingRange {
+  /**
+   * Jeda untuk langkah yang memakan bidak.
+   *
+   * Biasanya lebih pendek: bidak lawan sudah berdiri di kotak tujuan, jadi langkah itu
+   * tidak butuh dicari — dan jeda panjang sebelum memakan justru terbaca lebih aneh
+   * daripada jeda pendek.
+   */
+  capture: TimingRange;
 }
 
 /** Batas yang masuk akal: di bawah 100 ms tidak lagi menyerupai tangan manusia. */
@@ -62,7 +82,11 @@ export const TIMING_MIN_MS = 100;
 export const TIMING_MAX_MS = 10_000;
 export const TIMING_STEP_MS = 100;
 
-export const DEFAULT_TIMING: AutoTiming = { minMs: 500, maxMs: 1_500 };
+export const DEFAULT_TIMING: AutoTiming = {
+  minMs: 500,
+  maxMs: 1_500,
+  capture: { minMs: 200, maxMs: 700 },
+};
 
 function clampMs(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
@@ -74,11 +98,22 @@ function clampMs(value: unknown, fallback: number): number {
  * dijamin. Yang penting dijaga adalah min <= max: rentang terbalik akan membuat
  * perhitungan jeda menghasilkan angka negatif, dan langkah dimainkan seketika.
  */
+function sanitizeRange(value: unknown, fallback: TimingRange): TimingRange {
+  const raw = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  const minMs = clampMs(raw.minMs, fallback.minMs);
+  const maxMs = clampMs(raw.maxMs, fallback.maxMs);
+  return minMs <= maxMs ? { minMs, maxMs } : { minMs: maxMs, maxMs: minMs };
+}
+
 export function sanitizeTiming(value: unknown): AutoTiming {
   const raw = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
-  const minMs = clampMs(raw.minMs, DEFAULT_TIMING.minMs);
-  const maxMs = clampMs(raw.maxMs, DEFAULT_TIMING.maxMs);
-  return minMs <= maxMs ? { minMs, maxMs } : { minMs: maxMs, maxMs: minMs };
+  // Nilai tersimpan dari versi sebelum ada rentang kedua tidak punya `capture` sama
+  // sekali; itu bukan nilai rusak, melainkan setelan lama yang lengkap menurut zamannya,
+  // jadi bagian yang hilang diisi bawaan dan sisanya dipakai apa adanya.
+  return {
+    ...sanitizeRange(raw, DEFAULT_TIMING),
+    capture: sanitizeRange(raw.capture, DEFAULT_TIMING.capture),
+  };
 }
 
 export async function loadTiming(): Promise<AutoTiming> {
@@ -286,4 +321,27 @@ export async function loadThreats(): Promise<boolean> {
 
 export async function saveThreats(on: boolean): Promise<void> {
   await browser.storage.local.set({ [THREATS_KEY]: on === true });
+}
+
+/**
+ * Kunci storage untuk penanda kursor maya.
+ *
+ * Bawaannya MATI, kebalikan dari setelan tampilan lain di berkas ini. Titik merah yang
+ * melayang di atas papan adalah alat pemeriksa, bukan bagian dari cara ekstensi ini
+ * dipakai sehari-hari: ia satu-satunya cara melihat jalur yang dipercaya halaman, dan
+ * tidak ada gunanya selain untuk itu. Menyalakannya harus jadi keputusan sadar.
+ */
+export const CURSOR_DOT_KEY = 'cursorDot';
+
+export function sanitizeCursorDot(value: unknown): boolean {
+  return value === true;
+}
+
+export async function loadCursorDot(): Promise<boolean> {
+  const stored = await browser.storage.local.get(CURSOR_DOT_KEY);
+  return sanitizeCursorDot(stored[CURSOR_DOT_KEY]);
+}
+
+export async function saveCursorDot(on: boolean): Promise<void> {
+  await browser.storage.local.set({ [CURSOR_DOT_KEY]: on === true });
 }

@@ -17,17 +17,34 @@
  */
 let cursor: { x: number; y: number } | undefined;
 
-export function cursorPoint(): { x: number; y: number } | undefined {
-  return cursor;
-}
-
-export function setCursor(point: { x: number; y: number }): void {
-  cursor = { ...point };
-}
-
 export interface Point {
   x: number;
   y: number;
+}
+
+/**
+ * Yang ingin tahu ke mana kursor maya berpindah.
+ *
+ * Ada karena kursor ini tidak kelihatan: tidak ada panah di layar yang ikut bergerak,
+ * jadi satu-satunya cara melihat prosesnya adalah menggambar sendiri penandanya
+ * (`cursorDot.ts`). Dibuat sebagai langganan, bukan panggilan langsung ke penggambarnya,
+ * supaya lapisan paling bawah ini tidak perlu tahu apa-apa soal tampilan — dan tetap
+ * bisa jalan tanpa DOM di dalam tes.
+ */
+const listeners = new Set<(point: Point) => void>();
+
+export function onCursorMove(listener: (point: Point) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function cursorPoint(): Point | undefined {
+  return cursor;
+}
+
+export function setCursor(point: Point): void {
+  cursor = { ...point };
+  for (const listener of listeners) listener(cursor);
 }
 
 function eventInit(point: Point, buttons: number) {
@@ -62,7 +79,7 @@ export function send(target: Element, type: string, point: Point, buttons: numbe
   };
   if (type.startsWith('pointer')) target.dispatchEvent(new PointerEvent(type, pointer));
   else target.dispatchEvent(new MouseEvent(type, init));
-  cursor = { x: point.x, y: point.y };
+  setCursor(point);
 }
 
 /**

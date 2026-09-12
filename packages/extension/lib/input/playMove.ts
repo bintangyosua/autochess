@@ -79,6 +79,20 @@ export function squarePoint(board: Element, square: string): Point {
   };
 }
 
+/**
+ * Bidak apa yang berdiri di sebuah kotak, dalam kode chess.com ("wp", "bq"), atau
+ * `undefined` kalau kotaknya kosong.
+ *
+ * Dibaca dari kelas elemennya, sumber yang sama dengan pembaca papan — bukan dari FEN
+ * hasil tebakan kita, supaya keputusan yang bergantung padanya tidak ikut salah kalau
+ * rantai langkah sedang meleset.
+ */
+export function pieceAt(board: Element, square: string): string | undefined {
+  const piece = board.querySelector(`.piece.${squareClass(square)}`);
+  if (!piece) return undefined;
+  return Array.from(piece.classList).find((name) => /^[wb][kqrbnp]$/.test(name));
+}
+
 /** Panjang sisi satu kotak papan — dasar ukuran kotak acak untuk titik klik. */
 export function squareSize(board: Element): number {
   return board.getBoundingClientRect().width / 8;
