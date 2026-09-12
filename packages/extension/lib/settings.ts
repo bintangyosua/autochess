@@ -1,3 +1,5 @@
+import { DEFAULT_THINK_STYLE, type ThinkStyle } from './input/thinkTime';
+import { DEFAULT_CLOCK_STYLE, type ClockStyle } from './board/clock';
 import { DEFAULT_OFFSET, sanitizeOffset, type OffsetRange } from './dynamicElo';
 import { browser } from 'wxt/browser';
 
@@ -493,4 +495,73 @@ export async function saveAutoNewGame(value: AutoNewGameSetting): Promise<void> 
 /** Buang catatan tombol yang pernah terlihat. */
 export async function clearSeenLabels(): Promise<void> {
   await browser.storage.local.set({ [NEW_GAME_SEEN_KEY]: [] });
+}
+
+/**
+ * Kunci storage untuk gaya berpikir: waktu yang mengikuti posisi, dan kesadaran jam.
+ *
+ * Keduanya disimpan bersama karena keduanya mengubah hal yang sama — lama jeda mode auto
+ * — dan memisahnya berarti dua tempat yang harus dibaca untuk menjawab "kenapa langkah
+ * ini cepat sekali".
+ */
+export const THINK_STYLE_KEY = 'thinkStyle';
+
+export interface ThinkSetting {
+  think: ThinkStyle;
+  clock: ClockStyle;
+}
+
+export const DEFAULT_THINK_SETTING: ThinkSetting = {
+  think: DEFAULT_THINK_STYLE,
+  clock: DEFAULT_CLOCK_STYLE,
+};
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+export function sanitizeThinkSetting(value: unknown): ThinkSetting {
+  const raw = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  const think =
+    typeof raw.think === 'object' && raw.think !== null
+      ? (raw.think as Record<string, unknown>)
+      : {};
+  const clock =
+    typeof raw.clock === 'object' && raw.clock !== null
+      ? (raw.clock as Record<string, unknown>)
+      : {};
+
+  // `easy` dijaga tidak melebihi `hard`: kalau terbalik, penjepitan di `thinkFactor`
+  // akan saling bertabrakan dan hasilnya jeda yang tidak mengikuti aturan mana pun.
+  const easy = clampNumber(think.easy, DEFAULT_THINK_STYLE.easy, 0.1, 1);
+  const hard = clampNumber(think.hard, DEFAULT_THINK_STYLE.hard, 1, 5);
+
+  return {
+    think: {
+      enabled: think.enabled !== false,
+      easy: Math.min(easy, hard),
+      hard: Math.max(easy, hard),
+      openingPlies: Math.round(
+        clampNumber(think.openingPlies, DEFAULT_THINK_STYLE.openingPlies, 0, 40),
+      ),
+    },
+    clock: {
+      enabled: clock.enabled !== false,
+      panicSeconds: Math.round(
+        clampNumber(clock.panicSeconds, DEFAULT_CLOCK_STYLE.panicSeconds, 5, 300),
+      ),
+      panicFactor: clampNumber(clock.panicFactor, DEFAULT_CLOCK_STYLE.panicFactor, 0.05, 1),
+      maxShare: clampNumber(clock.maxShare, DEFAULT_CLOCK_STYLE.maxShare, 0.01, 0.5),
+    },
+  };
+}
+
+export async function loadThinkSetting(): Promise<ThinkSetting> {
+  const stored = await browser.storage.local.get(THINK_STYLE_KEY);
+  return sanitizeThinkSetting(stored[THINK_STYLE_KEY]);
+}
+
+export async function saveThinkSetting(value: ThinkSetting): Promise<void> {
+  await browser.storage.local.set({ [THINK_STYLE_KEY]: sanitizeThinkSetting(value) });
 }

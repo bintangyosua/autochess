@@ -24,6 +24,8 @@ import { createAutoNewGame } from '../../lib/input/autoNewGame';
 import { showCursorDot } from '../../lib/input/cursorDot';
 import { isCapture } from '../../lib/input/capture';
 import { readOwnRating } from '../../lib/board/rating';
+import { capByClock, clockFactor, readOwnClock } from '../../lib/board/clock';
+import { isRecapture, spreadOf, thinkFactor } from '../../lib/input/thinkTime';
 import { effectiveElo, pickOffset } from '../../lib/dynamicElo';
 import { createPositionHistory, type TrackedPosition } from '../../lib/board/positionHistory';
 import {
@@ -66,6 +68,11 @@ import {
   rememberSeenLabels,
   sanitizeAutoNewGame,
   type AutoNewGameSetting,
+  THINK_STYLE_KEY,
+  DEFAULT_THINK_SETTING,
+  loadThinkSetting,
+  sanitizeThinkSetting,
+  type ThinkSetting,
   DYNAMIC_ELO_KEY,
   DEFAULT_DYNAMIC_ELO,
   loadDynamicElo,
@@ -134,6 +141,9 @@ let dynamicElo: DynamicEloSetting = DEFAULT_DYNAMIC_ELO;
 
 /** Setelan "game baru otomatis". Jumlah game yang sudah dimulai dipegang modulnya sendiri. */
 let autoNewGameSetting: AutoNewGameSetting = DEFAULT_AUTO_NEW_GAME;
+
+/** Gaya berpikir: pengali waktu menurut posisi, dan kesadaran sisa waktu di jam. */
+let thinkSetting: ThinkSetting = DEFAULT_THINK_SETTING;
 
 /**
  * Offset yang sedang berlaku, dipilih acak sekali per game.
@@ -248,6 +258,7 @@ export default defineContentScript({
     elos = await loadElos();
     dynamicElo = await loadDynamicElo();
     autoNewGameSetting = await loadAutoNewGame();
+    thinkSetting = await loadThinkSetting();
     personas = await loadPersonas();
     timing = await loadTiming();
     arrowCounts = await loadArrows();
@@ -330,6 +341,9 @@ export default defineContentScript({
       if (PERSONA_KEY in changes) personas = readPersonaChange(changes[PERSONA_KEY]?.newValue);
       if (AUTO_TIMING_KEY in changes) timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
       if (CURSOR_DOT_KEY in changes) showCursorDot(sanitizeCursorDot(changes[CURSOR_DOT_KEY]?.newValue));
+      if (THINK_STYLE_KEY in changes) {
+        thinkSetting = sanitizeThinkSetting(changes[THINK_STYLE_KEY]?.newValue);
+      }
       if (AUTO_NEW_GAME_KEY in changes) {
         const before = autoNewGameSetting.enabled;
         autoNewGameSetting = sanitizeAutoNewGame(changes[AUTO_NEW_GAME_KEY]?.newValue);
@@ -533,6 +547,18 @@ export default defineContentScript({
       if (newGame) eloOffset = undefined;
     }
 
+    /**
+     * Langkah terakhir lawan, dalam UCI.
+     *
+     * Diambil dari rantai langkah yang sudah dipegang, bukan dibaca ulang dari papan.
+     * Dipakai untuk mengenali balasan makan di kotak yang sama — langkah yang sudah
+     * diantisipasi manusia sejak lawan mengangkat bidaknya, jadi dimainkan jauh lebih
+     * cepat daripada langkah memakan biasa.
+     */
+    function opponentLastUci(): string | undefined {
+      return lastPosition?.moves.at(-1);
+    }
+
     function requestAnalysis(providerId: string, position: TrackedPosition, attempt = 1): void {
       void browser.runtime
         .sendMessage({
@@ -669,7 +695,33 @@ export default defineContentScript({
       const board = findBoard();
       const capture =
         !!board && isCapture({ from: best.uci.slice(0, 2), to: best.uci.slice(2, 4) }, (square) => pieceAt(board, square));
-      const total = autoPlayDelayMs(capture ? timing.capture : timing);
+      const base = autoPlayDelayMs(capture ? timing.capture : timing);
+
+      // Jeda acak itu baru tempo dasarmu. Dua hal membuatnya naik-turun seperti tangan
+      // manusia: susahnya posisi, dan sisa waktu di jam. Keduanya pengali, bukan
+      // pengganti — rentang yang kamu atur tetap yang menentukan temponya.
+      const suggestions = overlay.providers[id]?.suggestions ?? [];
+      const factor = thinkFactor(
+        {
+          lines: suggestions.length,
+          requested: arrowsFor(arrowCounts, id, engines.find((e) => e.id === id)?.defaults?.multipv),
+          ply: lastPosition?.moves.length ?? 0,
+          recapture: isRecapture(best.uci, opponentLastUci()),
+          mate: best.mateIn !== undefined,
+          spreadCp: spreadOf(suggestions),
+        },
+        thinkSetting.think,
+      );
+
+      const remaining = readOwnClock(board ?? undefined);
+      // Batas keras sisa waktu dipasang paling akhir, setelah semua pengali: ia pagar,
+      // bukan salah satu suara dalam perhitungan.
+      const total = capByClock(
+        base * factor * clockFactor(remaining, thinkSetting.clock),
+        remaining,
+        thinkSetting.clock,
+      );
+
       const { thinkMs, clickMs } = splitAutoDelay(total);
       overlay.autoPlay.message = `${best.san ?? best.uci} dalam ${(total / 1000).toFixed(1)}s`;
       // Sisa perjalanan kursor masih berlangsung setelah jeda antar-klik habis, jadi

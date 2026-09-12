@@ -63,6 +63,12 @@
     clearSeenLabels,
     sanitizeSeen,
     type AutoNewGameSetting,
+    THINK_STYLE_KEY,
+    DEFAULT_THINK_SETTING,
+    loadThinkSetting,
+    saveThinkSetting,
+    sanitizeThinkSetting,
+    type ThinkSetting,
     DYNAMIC_ELO_KEY,
     DEFAULT_DYNAMIC_ELO,
     loadDynamicElo,
@@ -88,6 +94,7 @@
   let cursorDot = $state(false);
   let dynamic = $state<DynamicEloSetting>(DEFAULT_DYNAMIC_ELO);
   let newGame = $state<AutoNewGameSetting>(DEFAULT_AUTO_NEW_GAME);
+  let think = $state<ThinkSetting>(DEFAULT_THINK_SETTING);
   /** Teks tombol yang pernah terlihat di modal hasil, dikumpulkan content script. */
   let seen = $state<string[]>([]);
 
@@ -150,6 +157,10 @@
     seen = value;
   });
 
+  void loadThinkSetting().then((value) => {
+    think = value;
+  });
+
   // Popup dan tab lain bisa mengubah nilai yang sama; ikuti perubahannya.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && Array.isArray(changes.providers?.newValue)) {
@@ -183,6 +194,9 @@
     }
     if (area === 'local' && AUTO_NEW_GAME_KEY in changes) {
       newGame = sanitizeAutoNewGame(changes[AUTO_NEW_GAME_KEY]?.newValue);
+    }
+    if (area === 'local' && THINK_STYLE_KEY in changes) {
+      think = sanitizeThinkSetting(changes[THINK_STYLE_KEY]?.newValue);
     }
     if (area === 'local' && DYNAMIC_ELO_KEY in changes) {
       dynamic = sanitizeDynamicElo(changes[DYNAMIC_ELO_KEY]?.newValue);
@@ -367,6 +381,11 @@
     seen = [];
     void clearSeenLabels();
     setNewGame({ labels: [] });
+  }
+
+  function setThink(patch: Partial<ThinkSetting>): void {
+    think = sanitizeThinkSetting({ ...think, ...patch });
+    void saveThinkSetting(think);
   }
 
   function setCursorDot(on: boolean): void {
@@ -570,6 +589,178 @@
       />
       <span class="unit">ms</span>
     </div>
+  </section>
+
+  <section class="block">
+    <div class="top">
+      <h2>Waktu ikut posisi</h2>
+      <label class="switch">
+        <input
+          type="checkbox"
+          aria-label="Aktifkan waktu berpikir adaptif"
+          checked={think.think.enabled}
+          onchange={(e) => setThink({ think: { ...think.think, enabled: e.currentTarget.checked } })}
+        />
+        <span>{think.think.enabled ? 'aktif' : 'mati'}</span>
+      </label>
+    </div>
+    <p class="lead">
+      Jeda di blok sebelumnya jadi tempo dasar, lalu dikali menurut posisinya. Manusia
+      melangkah nyaris refleks saat cuma ada satu langkah legal atau saat membalas makan
+      di kotak yang sama, dan diam lama justru ketika beberapa langkah terlihat sama
+      bagusnya. Jeda acak merata adalah bentuk sebaran yang tidak pernah dihasilkan
+      manusia — dan sebaran waktu jauh lebih mudah diuji daripada gerakan tetikus.
+    </p>
+    <p class="lead">
+      Yang membuat cepat: satu-satunya langkah legal, skakmat terlihat, balasan makan,
+      langkah pembukaan, dan langkah terbaik yang unggul telak. Yang membuat lambat: skor
+      dua langkah teratas berdekatan.
+    </p>
+
+    <h3 class="range-head">Pengali langkah jelas</h3>
+    <div class="row">
+      <label for="thEasy">cepat</label>
+      <input
+        id="thEasy"
+        type="range"
+        min="10"
+        max="100"
+        step="5"
+        disabled={!think.think.enabled}
+        value={Math.round(think.think.easy * 100)}
+        oninput={(e) =>
+          setThink({ think: { ...think.think, easy: e.currentTarget.valueAsNumber / 100 } })}
+      />
+      <span class="value">{Math.round(think.think.easy * 100)}%</span>
+    </div>
+
+    <h3 class="range-head">Pengali posisi sulit</h3>
+    <div class="row">
+      <label for="thHard">lambat</label>
+      <input
+        id="thHard"
+        type="range"
+        min="100"
+        max="400"
+        step="10"
+        disabled={!think.think.enabled}
+        value={Math.round(think.think.hard * 100)}
+        oninput={(e) =>
+          setThink({ think: { ...think.think, hard: e.currentTarget.valueAsNumber / 100 } })}
+      />
+      <span class="value">{Math.round(think.think.hard * 100)}%</span>
+    </div>
+
+    <h3 class="range-head">Panjang pembukaan</h3>
+    <div class="row">
+      <label for="thPly">langkah</label>
+      <input
+        id="thPly"
+        type="range"
+        min="0"
+        max="30"
+        step="1"
+        disabled={!think.think.enabled}
+        value={think.think.openingPlies}
+        oninput={(e) =>
+          setThink({
+            think: { ...think.think, openingPlies: e.currentTarget.valueAsNumber },
+          })}
+      />
+      <span class="value">{think.think.openingPlies}</span>
+    </div>
+    <p class="fine">
+      Dihitung dalam setengah-langkah, jadi 10 berarti lima langkah pertama tiap sisi.
+      Makin dekat ke langkah pertama, makin cepat — bukan cepat merata lalu berhenti
+      mendadak.
+    </p>
+  </section>
+
+  <section class="block">
+    <div class="top">
+      <h2>Sadar sisa waktu</h2>
+      <label class="switch">
+        <input
+          type="checkbox"
+          aria-label="Aktifkan kesadaran jam"
+          checked={think.clock.enabled}
+          onchange={(e) => setThink({ clock: { ...think.clock, enabled: e.currentTarget.checked } })}
+        />
+        <span>{think.clock.enabled ? 'aktif' : 'mati'}</span>
+      </label>
+    </div>
+    <p class="lead">
+      Tempo dipercepat saat jam menipis. Tanpa ini, ekstensi memakai tempo yang sama di
+      detik pertama dan detik terakhir — dan itu buruk dua kali: tidak ada manusia yang
+      tenang berpikir sedetik penuh dengan sisa delapan detik, dan kamu kalah karena
+      kehabisan waktu di posisi yang menang.
+    </p>
+
+    <h3 class="range-head">Mulai mempercepat di</h3>
+    <div class="row">
+      <label for="ckPanic">sisa</label>
+      <input
+        id="ckPanic"
+        type="range"
+        min="5"
+        max="120"
+        step="5"
+        disabled={!think.clock.enabled}
+        value={think.clock.panicSeconds}
+        oninput={(e) =>
+          setThink({
+            clock: { ...think.clock, panicSeconds: e.currentTarget.valueAsNumber },
+          })}
+      />
+      <span class="value">{think.clock.panicSeconds}s</span>
+    </div>
+
+    <h3 class="range-head">Tempo tercepat</h3>
+    <div class="row">
+      <label for="ckFactor">panik</label>
+      <input
+        id="ckFactor"
+        type="range"
+        min="5"
+        max="100"
+        step="5"
+        disabled={!think.clock.enabled}
+        value={Math.round(think.clock.panicFactor * 100)}
+        oninput={(e) =>
+          setThink({
+            clock: { ...think.clock, panicFactor: e.currentTarget.valueAsNumber / 100 },
+          })}
+      />
+      <span class="value">{Math.round(think.clock.panicFactor * 100)}%</span>
+    </div>
+    <p class="fine">
+      Turun mulus dari 100% di ambang atas sampai angka ini saat waktu habis, bukan
+      melompat di satu titik — lompatan mendadak justru pola tersendiri.
+    </p>
+
+    <h3 class="range-head">Batas per langkah</h3>
+    <div class="row">
+      <label for="ckShare">maks</label>
+      <input
+        id="ckShare"
+        type="range"
+        min="1"
+        max="30"
+        step="1"
+        disabled={!think.clock.enabled}
+        value={Math.round(think.clock.maxShare * 100)}
+        oninput={(e) =>
+          setThink({
+            clock: { ...think.clock, maxShare: e.currentTarget.valueAsNumber / 100 },
+          })}
+      />
+      <span class="value">{Math.round(think.clock.maxShare * 100)}%</span>
+    </div>
+    <p class="fine">
+      Bagian terbesar dari sisa waktu yang boleh dihabiskan satu langkah. Pagar yang
+      berdiri sendiri, terpisah dari pengali di atas: tanpa ini, rentang jeda 3 detik akan
+      menghabiskan sisa waktu 4 detik.
+    </p>
   </section>
 
   <section class="block">
