@@ -1,3 +1,4 @@
+import { debug, warn } from '../lib/log';
 import { browser } from 'wxt/browser';
 import { EngineClient } from '../lib/engineClient';
 import { isRuntimeMessage, type AnalyzeReply, type RuntimeMessage, type StatusReply } from '../lib/messages';
@@ -34,7 +35,7 @@ export default defineBackground(() => {
 
   const client = new EngineClient({
     onState: (state, detail) => {
-      console.log(`[cmr] bridge ${state}${detail ? ` (${detail})` : ''}`);
+      debug(`[cmr] bridge ${state}${detail ? ` (${detail})` : ''}`);
       void browser.storage.session.set({
         bridgeState: state,
         bridgeDetail: detail ?? null,
@@ -44,7 +45,7 @@ export default defineBackground(() => {
       });
     },
     onProviders: (providers) => {
-      console.log('[cmr] provider:', providers.map((p) => `${p.id}=${p.ready ? 'siap' : p.problem}`));
+      debug('[cmr] provider:', providers.map((p) => `${p.id}=${p.ready ? 'siap' : p.problem}`));
       void browser.storage.session.set({ providers });
       // Content script tidak bisa membaca storage.session, jadi daftarnya dikirim
       // langsung ke tiap tab chess.com yang terbuka.
@@ -57,7 +58,7 @@ export default defineBackground(() => {
       void browser.storage.session.set({ lastResult: result });
     },
     onError: (reqId, code, message) => {
-      console.warn(`[cmr] error ${reqId ?? '-'}: ${code} — ${message}`);
+      warn(`[cmr] error ${reqId ?? '-'}: ${code} — ${message}`);
       if (reqId) {
         toTab(reqId, { type: 'engineError', reqId, code, message });
         requesters.delete(reqId);

@@ -1,3 +1,4 @@
+import { debug, warn } from '../../lib/log';
 import { mount, unmount } from 'svelte';
 import { browser } from 'wxt/browser';
 import Overlay from './Overlay.svelte';
@@ -17,7 +18,8 @@ import {
   overlay,
   syncProviders,
 } from '../../lib/overlayState.svelte';
-import { playMove } from '../../lib/input/playMove';
+import { cancelGlide, playMove } from '../../lib/input/playMove';
+import { createIdleDrift } from '../../lib/input/idleDrift';
 import { createPositionHistory, type TrackedPosition } from '../../lib/board/positionHistory';
 import {
   MAX_ATTEMPTS,
@@ -185,7 +187,7 @@ export default defineContentScript({
   cssInjectionMode: 'ui',
 
   async main(ctx) {
-    console.log('[cmr] content script jalan di', location.pathname);
+    debug('[cmr] content script jalan di', location.pathname);
 
     // Pilihan panah disimpan di storage.local supaya bertahan setelah reload dan
     // berlaku sama di semua tab chess.com.
@@ -312,7 +314,7 @@ export default defineContentScript({
 
     const board = await waitForBoard(ctx.signal);
     if (!board) return;
-    console.log('[cmr] papan ditemukan:', board.tagName.toLowerCase());
+    debug('[cmr] papan ditemukan:', board.tagName.toLowerCase());
 
     // Overlay TIDAK disisipkan ke dalam wc-chess-board. Elemen itu dirender lit, yang
     // membersihkan isi container-nya tiap re-render — anak yang bukan miliknya ikut
@@ -355,7 +357,7 @@ export default defineContentScript({
     function syncPosition(): void {
       const found = findBoard();
       if (found && found !== current) {
-        console.log('[cmr] elemen papan diganti, overlay mengikuti yang baru');
+        debug('[cmr] elemen papan diganti, overlay mengikuti yang baru');
         current = found;
         resizeObserver.disconnect();
         resizeObserver.observe(current);
@@ -367,7 +369,7 @@ export default defineContentScript({
 
     resizeObserver.observe(current);
     syncPosition();
-    console.log('[cmr] overlay ter-mount, lebar papan:', overlay.rect.width);
+    debug('[cmr] overlay ter-mount, lebar papan:', overlay.rect.width);
 
     // Jaring pengaman: papan bisa bergeser tanpa scroll, resize, atau perubahan posisi
     // (panel samping terbuka, iklan termuat, layout berubah). Cek berkala itu murah.
@@ -387,7 +389,7 @@ export default defineContentScript({
         applyResult(raw.result, raw.final);
         if (raw.final) maybeAutoPlay();
       } else if (raw.type === 'engineError') {
-        console.warn('[cmr] engine error:', raw.message);
+        warn('[cmr] engine error:', raw.message);
         awaiting.clear();
         markProblem('blocked', raw.message);
       }
@@ -417,12 +419,12 @@ export default defineContentScript({
         if (awaiting.size === 0 || watchdogFen !== position.fen) return;
         const lost = [...awaiting];
         if (!retried) {
-          console.warn('[cmr] hasil tidak kembali, meminta ulang:', lost.join(', '));
+          warn('[cmr] hasil tidak kembali, meminta ulang:', lost.join(', '));
           for (const id of lost) requestAnalysis(id, position);
           armWatchdog(position, true);
           return;
         }
-        console.warn('[cmr] hasil tetap tidak kembali setelah diminta ulang:', lost.join(', '));
+        warn('[cmr] hasil tetap tidak kembali setelah diminta ulang:', lost.join(', '));
         markProblem('offline', 'bridge diam, tidak ada hasil');
       }, WATCHDOG_MS);
     }
@@ -465,11 +467,11 @@ export default defineContentScript({
             ctx.setTimeout(() => requestAnalysis(providerId, position, attempt + 1), 500 * attempt);
             return;
           }
-          console.warn('[cmr] bridge tidak menerima permintaan setelah 3 percobaan');
+          warn('[cmr] bridge tidak menerima permintaan setelah 3 percobaan');
           markProblem('offline', 'bridge tidak terhubung');
         })
         .catch((err) => {
-          console.warn('[cmr] gagal kirim ke background:', err);
+          warn('[cmr] gagal kirim ke background:', err);
           markProblem('offline', 'background tidak merespons');
         });
     }
@@ -486,6 +488,15 @@ export default defineContentScript({
     let autoLastAttemptAt = 0;
     /** Alasan penolakan terakhir; denyut tiap detik tidak perlu mencatat hal yang sama. */
     let autoLastReason = '';
+    /**
+     * Sampai kapan kursor dipegang mode auto.
+     *
+     * Gerak menganggur dan langkah sungguhan memakai kursor maya yang sama, jadi salah
+     * satu harus mengalah. Yang mengalah adalah yang menganggur — batas ini dipasang
+     * sejak langkah dijadwalkan, bukan saat kliknya dikirim, karena selama jeda berpikir
+     * pun kursornya sudah dipesan.
+     */
+    let autoBusyUntil = 0;
 
     /**
      * Coba mainkan langkah terbaik untuk posisi sekarang.
@@ -513,7 +524,7 @@ export default defineContentScript({
           shouldRetry({ attempts: autoAttempts, sinceLastMs: Date.now() - autoLastAttemptAt });
         if (!retry) {
           if (decision.reason !== autoLastReason) {
-            console.log('[cmr] auto tidak jalan:', decision.reason);
+            debug('[cmr] auto tidak jalan:', decision.reason);
             autoLastReason = decision.reason;
           }
           if (decision.reason !== 'sudah dimainkan') {
@@ -527,20 +538,20 @@ export default defineContentScript({
           }
           return;
         }
-        console.warn(`[cmr] auto: percobaan ${autoAttempts} tidak berbuah, ulangi`);
+        warn(`[cmr] auto: percobaan ${autoAttempts} tidak berbuah, ulangi`);
       }
 
       const id = autoPlayProviderId();
       const best = id ? overlay.providers[id]?.suggestions[0] : undefined;
       if (!id) {
-        console.log('[cmr] auto tidak jalan: belum ada engine');
+        debug('[cmr] auto tidak jalan: belum ada engine');
         overlay.autoPlay.message = 'belum ada engine';
         return;
       }
       if (!best) {
         // Engine pilihan belum mengirim hasil; engine lain mungkin sudah. Ini normal
         // sesaat, dan panggilan berikutnya akan mencoba lagi.
-        console.log(`[cmr] auto menunggu hasil dari ${id}`);
+        debug(`[cmr] auto menunggu hasil dari ${id}`);
         overlay.autoPlay.message = `menunggu ${overlay.providers[id]?.label ?? id}`;
         return;
       }
@@ -561,6 +572,10 @@ export default defineContentScript({
       const total = autoPlayDelayMs(timing);
       const { thinkMs, clickMs } = splitAutoDelay(total);
       overlay.autoPlay.message = `${best.san ?? best.uci} dalam ${(total / 1000).toFixed(1)}s`;
+      // Sisa perjalanan kursor masih berlangsung setelah jeda antar-klik habis, jadi
+      // dilebihkan sedikit — gerak menganggur yang menyela di detik terakhir akan
+      // membatalkan klik tujuannya.
+      autoBusyUntil = Date.now() + total + 1_000;
 
       clearTimeout(autoTimer);
       autoTimer = ctx.setTimeout(() => {
@@ -568,11 +583,14 @@ export default defineContentScript({
         // duluan, papan diganti. Memainkan langkah lama di posisi baru adalah blunder
         // yang dibuat ekstensi, bukan olehmu.
         if (overlay.fen !== fen) {
-          console.log('[cmr] auto batal: posisi berubah selama jeda');
+          debug('[cmr] auto batal: posisi berubah selama jeda');
           overlay.autoPlay.message = 'batal, posisi berubah';
           return;
         }
-        console.log(`[cmr] auto memainkan ${best.san ?? best.uci} (${best.uci}) via ${style}`);
+        debug(`[cmr] auto memainkan ${best.san ?? best.uci} (${best.uci}) via ${style}`);
+        // Gerak menganggur bisa sedang di tengah jalan; hentikan dulu supaya jalur
+        // kursor tidak terbelah antara dua tujuan.
+        cancelGlide();
         const failure = playMove(
           {
             from: best.uci.slice(0, 2),
@@ -594,8 +612,26 @@ export default defineContentScript({
      * sebelum papan benar-benar bisa dimainkan, lalu semuanya diam sampai kamu jalan
      * sendiri secara manual. Denyut ini yang mencobanya lagi.
      */
+    /**
+     * Gerak kursor selagi menunggu.
+     *
+     * Ikut hidup-mati bersama mode auto: kursor yang bergerak sendiri hanya masuk akal
+     * di papan yang memang sedang dimainkan sendiri. Rekomendasinya diambil dari engine
+     * yang sama dengan yang dituruti mode auto, supaya yang "dilihat-lihat" kursor
+     * adalah langkah-langkah yang memang sedang dipertimbangkan.
+     */
+    const idleDrift = createIdleDrift({
+      idle: () => overlay.autoPlay.enabled && Date.now() >= autoBusyUntil,
+      moves: () => {
+        const id = autoPlayProviderId();
+        return id ? (overlay.providers[id]?.suggestions ?? []).map((s) => s.uci) : [];
+      },
+    });
+
     ctx.setInterval(() => {
-      if (overlay.autoPlay.enabled) maybeAutoPlay();
+      if (!overlay.autoPlay.enabled) return;
+      maybeAutoPlay();
+      idleDrift.tick();
     }, 1_000);
 
     const history = createPositionHistory();
@@ -610,7 +646,7 @@ export default defineContentScript({
         const position = history.observe({ fen: snapshot.fen!, turnKnown: snapshot.turnKnown });
         lastPosition = position;
         if (position.reanchored) {
-          console.log('[cmr] rantai langkah dimulai ulang:', position.reanchored);
+          debug('[cmr] rantai langkah dimulai ulang:', position.reanchored);
         }
 
         // Mode auto memeriksa fen ini sebelum dan sesudah jeda, jadi ia harus selalu
@@ -620,7 +656,7 @@ export default defineContentScript({
         overlay.turnKnown = position.turnKnown;
         syncPosition();
 
-        console.log(
+        debug(
           `[cmr] posisi: ${position.fen} (sorotan: ${snapshot.highlights.length}, ` +
             `rantai: ${position.moves.length} langkah)`,
         );
