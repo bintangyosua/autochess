@@ -2,7 +2,8 @@ import { debug, warn } from '../log';
 import { findBoard, readOrientation } from '../board/selectors';
 import { cancelGlide, glide } from './cursor';
 import { randomPointIn } from './path';
-import { send, withoutPointerCapture, type Point } from './mouse';
+import { type Point } from './mouse';
+import { press, release, tap } from './tap';
 
 /**
  * Mainkan langkah di papan chess.com dengan menggerakkan tetikus seperti pengguna.
@@ -96,67 +97,6 @@ export function pieceAt(board: Element, square: string): string | undefined {
 /** Panjang sisi satu kotak papan — dasar ukuran kotak acak untuk titik klik. */
 export function squareSize(board: Element): number {
   return board.getBoundingClientRect().width / 8;
-}
-
-/**
- * Elemen di bawah titik itu, tapi hanya kalau ia bagian dari papan.
- *
- * Panel overlay kita sendiri menempel di pojok kanan atas papan dan sengaja menerima
- * klik (tombolnya harus bisa ditekan), jadi untuk kotak-kotak di baliknya
- * `elementFromPoint` mengembalikan panel itu — dan langkah yang melewati kotak
- * tersebut akan "diklik" ke overlay sendiri, bukan ke papan. Apa pun yang bukan bagian
- * dari papan diganti dengan elemen papan; koordinatnya tetap dikirim apa adanya, dan
- * dari situlah chess.com menghitung kotaknya.
- */
-function targetAt(board: Element, point: Point): Element {
-  const found = document.elementFromPoint(point.x, point.y);
-  return found && board.contains(found) ? found : board;
-}
-
-/**
- * Tekan lalu lepas di satu titik.
- *
- * Perjalanan menuju titik ini sudah dilakukan `glide` sebelum pemanggilan, jadi di sini
- * tinggal satu pointermove sebagai penegasan posisi — beberapa penangan membaca posisi
- * terakhir yang dilaporkan, bukan posisi di event pointerdown — lalu ketukannya.
- */
-function tap(board: Element, point: Point): void {
-  const target = targetAt(board, point);
-  withoutPointerCapture(() => {
-    send(target, 'pointerover', point, 0);
-    send(target, 'mouseover', point, 0);
-    send(target, 'pointermove', point, 0);
-    send(target, 'mousemove', point, 0);
-    send(target, 'pointerdown', point, 1);
-    send(target, 'mousedown', point, 1);
-    send(target, 'pointerup', point, 0);
-    send(target, 'mouseup', point, 0);
-    send(target, 'click', point, 0);
-  });
-}
-
-/** Tekan tombol — awal sebuah seretan. */
-function press(board: Element, point: Point): void {
-  const target = targetAt(board, point);
-  withoutPointerCapture(() => {
-    send(target, 'pointerover', point, 0);
-    send(target, 'mouseover', point, 0);
-    send(target, 'pointermove', point, 0);
-    send(target, 'mousemove', point, 0);
-    send(target, 'pointerdown', point, 1);
-    send(target, 'mousedown', point, 1);
-  });
-}
-
-/** Lepas tombol — akhir sebuah seretan. */
-function release(board: Element, point: Point): void {
-  const dropTarget = targetAt(board, point);
-  withoutPointerCapture(() => {
-    send(dropTarget, 'pointerup', point, 0);
-    send(dropTarget, 'mouseup', point, 0);
-    send(document.documentElement, 'pointerup', point, 0);
-    send(document.documentElement, 'mouseup', point, 0);
-  });
 }
 
 /** Bidak promosi yang dipilih di jendela promosi chess.com. */

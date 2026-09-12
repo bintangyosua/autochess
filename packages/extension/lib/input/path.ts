@@ -95,3 +95,23 @@ export function cursorPath(from: Point, to: Point, options: PathOptions = {}): P
   }
   return points;
 }
+
+/**
+ * Titik acak di dalam sebuah elemen, menjauhi tepinya.
+ *
+ * Tepi tombol bukan tempat yang aman: di sana bisa ada border, bayangan, atau elemen
+ * lain yang tumpang tindih beberapa piksel, dan klik yang mendarat di situ bisa jatuh
+ * ke elemen tetangga. Bagian tengah 60% menyisakan seperlima lebar sebagai bantalan di
+ * tiap sisi — sebaran yang sama semangatnya dengan `randomPointIn` untuk kotak papan,
+ * hanya saja tombol tidak selalu persegi, jadi lebar dan tingginya dihitung terpisah.
+ */
+export function randomPointInRect(
+  rect: { left: number; top: number; width: number; height: number },
+  random: () => number = Math.random,
+): Point {
+  const inset = 0.6;
+  return {
+    x: rect.left + rect.width * (0.5 + (random() - 0.5) * inset),
+    y: rect.top + rect.height * (0.5 + (random() - 0.5) * inset),
+  };
+}

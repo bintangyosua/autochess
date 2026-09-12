@@ -49,11 +49,32 @@
     sanitizeThreats,
     saveThreats,
     DEFAULT_THREATS,
+    AUTO_NEW_GAME_KEY,
+    DEFAULT_AUTO_NEW_GAME,
+    loadAutoNewGame,
+    saveAutoNewGame,
+    sanitizeAutoNewGame,
+    NEW_GAME_MIN_MS,
+    NEW_GAME_MAX_MS,
+    MAX_GAMES_MIN,
+    MAX_GAMES_MAX,
+    NEW_GAME_SEEN_KEY,
+    loadSeenLabels,
+    clearSeenLabels,
+    sanitizeSeen,
+    type AutoNewGameSetting,
+    DYNAMIC_ELO_KEY,
+    DEFAULT_DYNAMIC_ELO,
+    loadDynamicElo,
+    saveDynamicElo,
+    sanitizeDynamicElo,
+    type DynamicEloSetting,
     CURSOR_DOT_KEY,
     loadCursorDot,
     saveCursorDot,
     sanitizeCursorDot,
   } from '../../lib/settings';
+  import { OFFSET_MAX, OFFSET_MIN } from '../../lib/dynamicElo';
 
   let providers = $state<ProviderInfo[]>([]);
   let depths = $state<DepthOverrides>({});
@@ -65,6 +86,10 @@
   let enabled = $state<EnabledOverrides>({});
   let threats = $state(DEFAULT_THREATS);
   let cursorDot = $state(false);
+  let dynamic = $state<DynamicEloSetting>(DEFAULT_DYNAMIC_ELO);
+  let newGame = $state<AutoNewGameSetting>(DEFAULT_AUTO_NEW_GAME);
+  /** Teks tombol yang pernah terlihat di modal hasil, dikumpulkan content script. */
+  let seen = $state<string[]>([]);
 
   // Daftar engine tetap datang dari bridge — halaman ini tidak punya daftarnya sendiri,
   // jadi engine yang dimatikan di engines.config.json juga tidak muncul di sini.
@@ -113,6 +138,18 @@
     cursorDot = value;
   });
 
+  void loadDynamicElo().then((value) => {
+    dynamic = value;
+  });
+
+  void loadAutoNewGame().then((value) => {
+    newGame = value;
+  });
+
+  void loadSeenLabels().then((value) => {
+    seen = value;
+  });
+
   // Popup dan tab lain bisa mengubah nilai yang sama; ikuti perubahannya.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && Array.isArray(changes.providers?.newValue)) {
@@ -138,6 +175,17 @@
     }
     if (area === 'local' && AUTO_TIMING_KEY in changes) {
       timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
+    }
+    if (area === 'local' && NEW_GAME_SEEN_KEY in changes) {
+      // Datang dari tab chess.com yang sedang terbuka; daftarnya tumbuh sendiri sambil
+      // halaman ini terbuka.
+      seen = sanitizeSeen(changes[NEW_GAME_SEEN_KEY]?.newValue);
+    }
+    if (area === 'local' && AUTO_NEW_GAME_KEY in changes) {
+      newGame = sanitizeAutoNewGame(changes[AUTO_NEW_GAME_KEY]?.newValue);
+    }
+    if (area === 'local' && DYNAMIC_ELO_KEY in changes) {
+      dynamic = sanitizeDynamicElo(changes[DYNAMIC_ELO_KEY]?.newValue);
     }
     if (area === 'local' && CURSOR_DOT_KEY in changes) {
       cursorDot = sanitizeCursorDot(changes[CURSOR_DOT_KEY]?.newValue);
@@ -270,6 +318,55 @@
     if (edge === 'maxMs' && capture.maxMs < capture.minMs) capture.minMs = capture.maxMs;
     timing = sanitizeTiming({ ...timing, capture });
     void saveTiming(timing);
+  }
+
+  /**
+   * Mode dinamis dan slider kekuatan tidak pernah aktif bersamaan; menyalakan ini
+   * membuat slider di bawah jadi tidak berlaku, dan itu dikatakan di UI-nya, bukan
+   * dibiarkan jadi kejutan.
+   */
+  function setDynamic(patch: Partial<DynamicEloSetting>): void {
+    const next = { ...dynamic, ...patch };
+    if ('minOffset' in patch && next.minOffset > next.maxOffset) next.maxOffset = next.minOffset;
+    if ('maxOffset' in patch && next.maxOffset < next.minOffset) next.minOffset = next.maxOffset;
+    dynamic = sanitizeDynamicElo(next);
+    void saveDynamicElo(dynamic);
+  }
+
+  function setNewGame(patch: Partial<AutoNewGameSetting>): void {
+    const next = { ...newGame, ...patch };
+    if ('minMs' in patch && next.minMs > next.maxMs) next.maxMs = next.minMs;
+    if ('maxMs' in patch && next.maxMs < next.minMs) next.minMs = next.maxMs;
+    newGame = sanitizeAutoNewGame(next);
+    void saveAutoNewGame(newGame);
+  }
+
+  /**
+   * Daftar kosong berarti "pakai pola bawaan", bukan "tidak ada yang boleh".
+   *
+   * Membedakan keduanya lewat daftar kosong terasa berisiko, tapi alternatifnya lebih
+   * buruk: sakelar "batasi tombol" yang terpisah bisa menyala dengan daftar kosong, dan
+   * hasilnya fitur yang diam tanpa alasan yang kelihatan.
+   */
+  function toggleLabel(label: string, on: boolean): void {
+    const labels = on
+      ? [...newGame.labels, label]
+      : newGame.labels.filter((item) => item !== label);
+    setNewGame({ labels });
+  }
+
+  /**
+   * Buang catatan tombol yang pernah terlihat.
+   *
+   * Berguna setelah chess.com mengubah bentuk modalnya, atau setelah kamu mengganti
+   * bahasa antarmuka: daftar lama jadi tidak akan pernah cocok lagi, dan membiarkannya
+   * cuma bikin bingung. Pilihan yang sudah dicentang ikut dibuang, karena isinya justru
+   * teks-teks itu.
+   */
+  function clearSeen(): void {
+    seen = [];
+    void clearSeenLabels();
+    setNewGame({ labels: [] });
   }
 
   function setCursorDot(on: boolean): void {
@@ -477,6 +574,247 @@
 
   <section class="block">
     <div class="top">
+      <h2>Game baru otomatis</h2>
+      <label class="switch">
+        <input
+          type="checkbox"
+          aria-label="Aktifkan game baru otomatis"
+          checked={newGame.enabled}
+          onchange={(e) => setNewGame({ enabled: e.currentTarget.checked })}
+        />
+        <span>{newGame.enabled ? 'aktif' : 'mati'}</span>
+      </label>
+    </div>
+    <p class="lead">
+      Begitu modal hasil muncul, tombol game baru diklik sendiri — lewat kursor maya yang
+      sama dengan yang memainkan bidak, bukan lewat klik langsung. Tombolnya dikenali dari
+      teksnya, bukan dari nama kelas chess.com yang bisa berubah sewaktu-waktu.
+    </p>
+    <p class="lead">
+      Tombol "Rematch" sengaja tidak dipakai: itu menantang lawan yang sama dan ia harus
+      menyetujuinya. Kalau ia menolak atau pergi, permintaannya menggantung dan tidak ada
+      game yang dimulai — padahal dari sisi ekstensi tombolnya sudah diklik. Tombol yang
+      menyangkut rated/unrated, pembelian, laporan, atau menerima tantangan tidak pernah
+      disentuh sama sekali.
+    </p>
+    <p class="lead">
+      <strong>Ini mengubah sifat ekstensi.</strong> Tanpa ia, ekstensi berhenti tiap kali
+      satu game selesai; dengan ia, ia berjalan sendiri sampai batas di bawah tercapai.
+      Puluhan game beruntun tanpa jeda adalah pola yang jauh lebih mencolok bagi sistem
+      fair play daripada satu langkah mana pun — batas jumlah game itu pagar, bukan hiasan.
+    </p>
+
+    <h3 class="range-head">Batas game per sesi</h3>
+    <div class="row">
+      <label for="ngmax">maks</label>
+      <input
+        id="ngmax"
+        type="range"
+        min={MAX_GAMES_MIN}
+        max={MAX_GAMES_MAX}
+        step="1"
+        disabled={!newGame.enabled}
+        value={newGame.maxGames}
+        oninput={(e) => setNewGame({ maxGames: e.currentTarget.valueAsNumber })}
+      />
+      <input
+        type="number"
+        min={MAX_GAMES_MIN}
+        max={MAX_GAMES_MAX}
+        step="1"
+        aria-label="Batas game per sesi"
+        disabled={!newGame.enabled}
+        value={newGame.maxGames}
+        onchange={(e) => setNewGame({ maxGames: e.currentTarget.valueAsNumber })}
+      />
+      <span class="unit">game</span>
+    </div>
+    <p class="fine">
+      Hitungannya nol lagi tiap tab dimuat ulang, atau tiap sakelar di atas dimatikan lalu
+      dinyalakan.
+    </p>
+
+    <h3 class="range-head">Jeda sebelum klik</h3>
+    <div class="row">
+      <label for="ngmin">min</label>
+      <input
+        id="ngmin"
+        type="range"
+        min={NEW_GAME_MIN_MS}
+        max={NEW_GAME_MAX_MS}
+        step="1000"
+        disabled={!newGame.enabled}
+        value={newGame.minMs}
+        oninput={(e) => setNewGame({ minMs: e.currentTarget.valueAsNumber })}
+      />
+      <input
+        type="number"
+        min={NEW_GAME_MIN_MS}
+        max={NEW_GAME_MAX_MS}
+        step="1000"
+        aria-label="Jeda minimum sebelum klik game baru"
+        disabled={!newGame.enabled}
+        value={newGame.minMs}
+        onchange={(e) => setNewGame({ minMs: e.currentTarget.valueAsNumber })}
+      />
+      <span class="unit">ms</span>
+    </div>
+    <div class="row">
+      <label for="ngmaxms">maks</label>
+      <input
+        id="ngmaxms"
+        type="range"
+        min={NEW_GAME_MIN_MS}
+        max={NEW_GAME_MAX_MS}
+        step="1000"
+        disabled={!newGame.enabled}
+        value={newGame.maxMs}
+        oninput={(e) => setNewGame({ maxMs: e.currentTarget.valueAsNumber })}
+      />
+      <input
+        type="number"
+        min={NEW_GAME_MIN_MS}
+        max={NEW_GAME_MAX_MS}
+        step="1000"
+        aria-label="Jeda maksimum sebelum klik game baru"
+        disabled={!newGame.enabled}
+        value={newGame.maxMs}
+        onchange={(e) => setNewGame({ maxMs: e.currentTarget.valueAsNumber })}
+      />
+      <span class="unit">ms</span>
+    </div>
+    <p class="fine">
+      Jauh lebih panjang daripada jeda langkah, dan itu disengaja: manusia melihat skor
+      akhir dan perubahan ratingnya dulu sebelum memutuskan main lagi.
+    </p>
+
+    <h3 class="range-head">Tombol yang boleh diklik</h3>
+    {#if seen.length === 0}
+      <p class="fine">
+        Belum ada tombol yang tercatat. Selesaikan satu game dengan sakelar di atas
+        menyala — teks tombol di modal hasilnya akan muncul di sini untuk kamu pilih.
+        Sementara itu, pola bawaan yang dipakai: teks yang diawali "New", atau yang
+        berbunyi "game baru" / "main lagi".
+      </p>
+    {:else}
+      <div class="pool">
+        {#each seen as label (label)}
+          <label class="chip" title={label}>
+            <input
+              type="checkbox"
+              disabled={!newGame.enabled}
+              checked={newGame.labels.includes(label)}
+              onchange={(e) => toggleLabel(label, e.currentTarget.checked)}
+            />
+            <span>{label}</span>
+          </label>
+        {/each}
+      </div>
+      <p class="fine">
+        {#if newGame.labels.length === 0}
+          Tidak ada yang dicentang — pola bawaan yang dipakai ("New ..."). Centang
+          beberapa kalau kamu mau waktu kontrol tertentu saja, termasuk custom seperti
+          "New 10 sec + 0.1"; yang dicentang dipilih acak tiap game.
+        {:else}
+          Dipilih acak tiap game dari yang dicentang. Kalau tak satu pun muncul di modal,
+          ekstensi diam saja — bukan memakai tombol lain.
+        {/if}
+      </p>
+      <p class="fine">
+        Daftar ini dikumpulkan dari modal yang benar-benar muncul di layarmu, jadi
+        bentuknya mengikuti bahasa dan waktu kontrol yang kamu pakai. Tombol berbahaya
+        (analisis, laporan, pembelian, menerima tantangan) tidak pernah diklik walau
+        tercentang.
+        <button type="button" class="link" onclick={clearSeen}>bersihkan daftar</button>
+      </p>
+    {/if}
+  </section>
+
+  <section class="block">
+    <div class="top">
+      <h2>Kekuatan ikut rating</h2>
+      <label class="switch">
+        <input
+          type="checkbox"
+          aria-label="Aktifkan Elo dinamis"
+          checked={dynamic.enabled}
+          onchange={(e) => setDynamic({ enabled: e.currentTarget.checked })}
+        />
+        <span>{dynamic.enabled ? 'aktif' : 'mati'}</span>
+      </label>
+    </div>
+    <p class="lead">
+      Kekuatan engine dihitung dari rating yang terbaca di halaman, bukan dari slider
+      Kekuatan per engine di bawah — kalau mode ini menyala, slider itu tidak berlaku.
+      Ratingnya dibaca dari komponen pemain, jadi ia selalu rating untuk tipe game yang
+      sedang dimainkan: pindah dari rapid ke blitz tidak perlu diatur ulang.
+    </p>
+    <p class="lead">
+      Offsetnya diacak sekali per game di dalam rentang di bawah, bukan satu angka tetap:
+      offset yang sama persis tiap game menghasilkan kekuatan yang seragam, dan
+      keseragaman itulah yang jadi pola. Isi min dan maks dengan angka yang sama kalau
+      kamu memang mau offset tetap.
+    </p>
+    <p class="lead">
+      Hasilnya tetap dijepit ke rentang yang didukung tiap engine. Stockfish tidak bisa
+      turun di bawah 1320, jadi kalau rating-mu 800, angka yang benar-benar dipakai tetap
+      1320 — bukan mode ini yang rusak. Kalau rating tidak terbaca (game tanpa rating,
+      lawan bot), slider per engine yang dipakai kembali.
+    </p>
+
+    <div class="row">
+      <label for="omin">min</label>
+      <input
+        id="omin"
+        type="range"
+        min={OFFSET_MIN}
+        max={OFFSET_MAX}
+        step="10"
+        disabled={!dynamic.enabled}
+        value={dynamic.minOffset}
+        oninput={(e) => setDynamic({ minOffset: e.currentTarget.valueAsNumber })}
+      />
+      <input
+        type="number"
+        min={OFFSET_MIN}
+        max={OFFSET_MAX}
+        step="10"
+        aria-label="Offset minimum"
+        disabled={!dynamic.enabled}
+        value={dynamic.minOffset}
+        onchange={(e) => setDynamic({ minOffset: e.currentTarget.valueAsNumber })}
+      />
+      <span class="unit">Elo</span>
+    </div>
+
+    <div class="row">
+      <label for="omax">maks</label>
+      <input
+        id="omax"
+        type="range"
+        min={OFFSET_MIN}
+        max={OFFSET_MAX}
+        step="10"
+        disabled={!dynamic.enabled}
+        value={dynamic.maxOffset}
+        oninput={(e) => setDynamic({ maxOffset: e.currentTarget.valueAsNumber })}
+      />
+      <input
+        type="number"
+        min={OFFSET_MIN}
+        max={OFFSET_MAX}
+        step="10"
+        aria-label="Offset maksimum"
+        disabled={!dynamic.enabled}
+        value={dynamic.maxOffset}
+        onchange={(e) => setDynamic({ maxOffset: e.currentTarget.valueAsNumber })}
+      />
+      <span class="unit">Elo</span>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="top">
       <h2>Tampilkan kursor maya</h2>
       <label class="switch">
         <input
@@ -660,6 +998,7 @@
                   max={provider.strength.max}
                   step="10"
                   aria-label={`Elo ${provider.label}`}
+                  disabled={dynamic.enabled}
                   value={eloOf(provider)}
                   oninput={(e) => setElo(provider, e.currentTarget.valueAsNumber)}
                 />
@@ -669,10 +1008,21 @@
                   max={provider.strength.max}
                   step="10"
                   aria-label={`Elo ${provider.label} (angka)`}
+                  disabled={dynamic.enabled}
                   value={eloOf(provider)}
                   onchange={(e) => setElo(provider, e.currentTarget.valueAsNumber)}
                 />
               </div>
+              {#if dynamic.enabled}
+                <!-- Slider yang mati tanpa penjelasan terbaca seperti bug. Nilainya tetap
+                     ditampilkan, bukan disembunyikan: ia yang dipakai lagi begitu mode
+                     dinamis dimatikan, atau saat rating tidak terbaca. -->
+                <p class="fine">
+                  Tidak berlaku sekarang — "Kekuatan ikut rating" sedang menyala. Nilai ini
+                  tersimpan dan dipakai lagi kalau mode itu dimatikan, atau kalau rating
+                  tidak terbaca di halaman.
+                </p>
+              {/if}
               <!-- Perbedaan ini nyata dan tidak bisa disembunyikan: hanya Stockfish yang
                    punya UCI_Elo. Sisanya dipetakan ke skala Skill, jadi angkanya perkiraan. -->
               <p class="fine">
@@ -774,6 +1124,44 @@
    * blok per-engine di bawah, dan menamai ini `.sub` juga membuat seluruh blok itu ikut
    * berubah bentuk — persis yang pernah terjadi.
    */
+  /* Daftar tombol yang tercatat: mengalir dan membungkus antar baris. */
+  .pool { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border: 1px solid #d6d3d1;
+    border-radius: 6px;
+    background: #fafaf9;
+    font-size: 11.5px;
+    line-height: 1.2;
+    cursor: pointer;
+    /*
+     * Teks tombolnya kalimat, bukan satu kata — "New 10 sec + 0.1", "Fair Play policy".
+     * Dibiarkan membungkus di dalam chip, bentuknya jadi tinggi dan bulat tak karuan;
+     * jadi tiap chip dipaksa satu baris, dan yang kepanjangan dipotong dengan elipsis.
+     * Teks penuhnya tetap bisa dibaca lewat tooltip.
+     */
+    white-space: nowrap;
+    /*
+     * Jangan menyusut. Flex item boleh mengecil agar muat sebaris, dan dengan `overflow:
+     * hidden` di dalamnya ia sanggup mengecil sampai tinggal satu huruf — delapan chip
+     * berjejer jadi "F… N… L…" yang tidak bisa dibaca sama sekali. Yang benar adalah
+     * membungkus ke baris berikutnya, dan itu baru terjadi kalau menyusut dilarang.
+     */
+    flex: none;
+    max-width: 100%;
+  }
+  .chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chip:hover { border-color: #a8a29e; }
+  /* Yang tercentang perlu kelihatan dari jauh, bukan cuma dari kotak centangnya. */
+  .chip:has(input:checked) { border-color: #2563eb; background: #eff6ff; }
+  .chip:has(input:disabled) { opacity: 0.55; cursor: default; }
+  .chip input { margin: 0; flex: none; accent-color: #2563eb; cursor: inherit; }
   .range-head {
     margin: 14px 0 2px;
     color: #78716c;
@@ -889,6 +1277,9 @@
     select { border-color: #44403c; background: #1c1917; }
     .sub { border-top-color: #292524; }
     .sublabel, .fine { color: #a8a29e; }
+    .chip { border-color: #44403c; background: #1c1917; }
+    .chip:hover { border-color: #57534e; }
+    .chip:has(input:checked) { border-color: #3b82f6; background: #1e293b; }
     .lead, .tag, .empty, .note, .switch { color: #a8a29e; }
     .value { color: #d6d3d1; }
     footer button { border-color: #44403c; background: #232020; }

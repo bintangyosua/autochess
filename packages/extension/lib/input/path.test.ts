@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cursorPath, easeInOut, randomPointIn } from './path';
+import { cursorPath, easeInOut, randomPointIn, randomPointInRect } from './path';
 
 /** Acak yang bisa diramal: nilai yang diberikan, lalu berulang. */
 function seq(...values: number[]): () => number {
@@ -70,5 +70,27 @@ describe('cursorPath', () => {
     // error apa pun.
     const points = cursorPath(from, from, { random: () => 0.5 });
     expect(points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+  });
+});
+
+describe('randomPointInRect', () => {
+  const rect = { left: 100, top: 50, width: 200, height: 40 };
+
+  it('selalu jatuh di dalam elemen, menjauhi tepinya', () => {
+    // Tepi tombol sering ditumpangi elemen lain beberapa piksel; klik di sana bisa
+    // mendarat di tetangganya, dan untuk tombol "game baru" tetangganya bisa apa saja.
+    for (const value of [0, 0.5, 0.999999]) {
+      const point = randomPointInRect(rect, () => value);
+      expect(point.x).toBeGreaterThan(rect.left + 20);
+      expect(point.x).toBeLessThan(rect.left + rect.width - 20);
+      expect(point.y).toBeGreaterThan(rect.top + 4);
+      expect(point.y).toBeLessThan(rect.top + rect.height - 4);
+    }
+  });
+
+  it('menyebar mengikuti bentuk elemennya, bukan kotak tetap', () => {
+    const wide = randomPointInRect(rect, () => 1);
+    const tall = randomPointInRect({ ...rect, width: 40, height: 200 }, () => 1);
+    expect(wide.x - rect.left).toBeGreaterThan(tall.x - rect.left);
   });
 });

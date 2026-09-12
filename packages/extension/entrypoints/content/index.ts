@@ -20,8 +20,11 @@ import {
 } from '../../lib/overlayState.svelte';
 import { cancelGlide, pieceAt, playMove } from '../../lib/input/playMove';
 import { createIdleDrift } from '../../lib/input/idleDrift';
+import { createAutoNewGame } from '../../lib/input/autoNewGame';
 import { showCursorDot } from '../../lib/input/cursorDot';
 import { isCapture } from '../../lib/input/capture';
+import { readOwnRating } from '../../lib/board/rating';
+import { effectiveElo, pickOffset } from '../../lib/dynamicElo';
 import { createPositionHistory, type TrackedPosition } from '../../lib/board/positionHistory';
 import {
   MAX_ATTEMPTS,
@@ -57,6 +60,17 @@ import {
   sanitizeTiming,
   supportsDepth,
   THREATS_KEY,
+  AUTO_NEW_GAME_KEY,
+  DEFAULT_AUTO_NEW_GAME,
+  loadAutoNewGame,
+  rememberSeenLabels,
+  sanitizeAutoNewGame,
+  type AutoNewGameSetting,
+  DYNAMIC_ELO_KEY,
+  DEFAULT_DYNAMIC_ELO,
+  loadDynamicElo,
+  sanitizeDynamicElo,
+  type DynamicEloSetting,
   CURSOR_DOT_KEY,
   loadCursorDot,
   sanitizeCursorDot,
@@ -109,6 +123,28 @@ let depths: DepthOverrides = {};
  * yang tidak punya entri di sini dibiarkan memakai bawaan di `engines.config.json`.
  */
 let elos: EloOverrides = {};
+
+/**
+ * Mode Elo dinamis: kekuatan engine mengikuti rating yang terbaca di halaman.
+ *
+ * Kalau menyala, nilai di `elos` diabaikan — bukan digabung. Dua sumber kekuatan yang
+ * aktif bersamaan tidak punya arti yang bisa dijelaskan ke pengguna.
+ */
+let dynamicElo: DynamicEloSetting = DEFAULT_DYNAMIC_ELO;
+
+/** Setelan "game baru otomatis". Jumlah game yang sudah dimulai dipegang modulnya sendiri. */
+let autoNewGameSetting: AutoNewGameSetting = DEFAULT_AUTO_NEW_GAME;
+
+/**
+ * Offset yang sedang berlaku, dipilih acak sekali per game.
+ *
+ * Bukan per permintaan analisis: kalau berubah tiap langkah, engine menghitung tiap
+ * langkah dengan kekuatan berbeda, dan kualitas permainan naik-turun tanpa sebab.
+ */
+let eloOffset: number | undefined;
+
+/** Rating terakhir yang terbaca, untuk ditampilkan dan untuk tahu kapan ia berubah. */
+let ownRating: number | undefined;
 let personas: PersonaOverrides = {};
 
 /**
@@ -210,6 +246,8 @@ export default defineContentScript({
     applyAutoPlaySetting(stored[AUTO_PLAY_KEY]);
     depths = await loadDepths();
     elos = await loadElos();
+    dynamicElo = await loadDynamicElo();
+    autoNewGameSetting = await loadAutoNewGame();
     personas = await loadPersonas();
     timing = await loadTiming();
     arrowCounts = await loadArrows();
@@ -284,9 +322,21 @@ export default defineContentScript({
       // dihitung sengaja tidak diulang supaya menggeser slider tidak membanjiri bridge.
       if (DEPTH_KEY in changes) depths = readDepthChange(changes[DEPTH_KEY]?.newValue);
       if (ELO_KEY in changes) elos = readEloChange(changes[ELO_KEY]?.newValue);
+      if (DYNAMIC_ELO_KEY in changes) {
+        dynamicElo = sanitizeDynamicElo(changes[DYNAMIC_ELO_KEY]?.newValue);
+        // Offset dibuang supaya nilai baru langsung dipakai, bukan menunggu game berikutnya.
+        eloOffset = undefined;
+      }
       if (PERSONA_KEY in changes) personas = readPersonaChange(changes[PERSONA_KEY]?.newValue);
       if (AUTO_TIMING_KEY in changes) timing = sanitizeTiming(changes[AUTO_TIMING_KEY]?.newValue);
       if (CURSOR_DOT_KEY in changes) showCursorDot(sanitizeCursorDot(changes[CURSOR_DOT_KEY]?.newValue));
+      if (AUTO_NEW_GAME_KEY in changes) {
+        const before = autoNewGameSetting.enabled;
+        autoNewGameSetting = sanitizeAutoNewGame(changes[AUTO_NEW_GAME_KEY]?.newValue);
+        // Menyalakan ulang berarti mulai menghitung dari nol. Batas jumlah game hanya
+        // ada artinya kalau ia bisa dikembalikan tanpa menutup tab.
+        if (!before && autoNewGameSetting.enabled) autoNewGame.reset();
+      }
 
       // Jumlah panah berlaku langsung untuk yang sudah tergambar — memotong daftar yang
       // sudah ada tidak perlu menunggu analisis baru. Yang menunggu langkah berikutnya
@@ -448,6 +498,41 @@ export default defineContentScript({
       return depths[engine.id];
     }
 
+    /**
+     * Elo yang dikirim ke sebuah engine.
+     *
+     * Mode dinamis menang atas slider kalau menyala DAN ratingnya terbaca. Kalau tidak
+     * terbaca — game tanpa rating, lawan bot, atau chess.com mengubah strukturnya —
+     * nilai manual dipakai apa adanya, bukan ditebak dari angka lain: menebak kekuatan
+     * lawan yang tidak diketahui bisa meleset ribuan poin ke dua arah.
+     */
+    function eloFor(providerId: string): number | undefined {
+      if (!dynamicElo.enabled || ownRating === undefined) return elos[providerId];
+
+      if (eloOffset === undefined) eloOffset = pickOffset(dynamicElo);
+      const strength = engines.find((e) => e.id === providerId)?.strength;
+      return effectiveElo(ownRating, eloOffset, strength);
+    }
+
+    /**
+     * Baca ulang rating dari halaman.
+     *
+     * Dipanggil tiap posisi berubah, bukan sekali saat mulai: komponen pemain sering
+     * belum terisi ketika content script jalan, dan ratingnya juga berganti sendiri saat
+     * kamu pindah dari rapid ke blitz tanpa memuat ulang halaman.
+     */
+    function refreshRating(newGame: boolean): void {
+      const rating = readOwnRating(findBoard() ?? undefined);
+      if (rating !== ownRating) {
+        if (rating !== undefined) debug(`[cmr] rating terbaca: ${rating}`);
+        ownRating = rating;
+        // Rating berganti berarti game atau tipe permainannya berganti; offset lama
+        // tidak lagi mewakili apa pun.
+        eloOffset = undefined;
+      }
+      if (newGame) eloOffset = undefined;
+    }
+
     function requestAnalysis(providerId: string, position: TrackedPosition, attempt = 1): void {
       void browser.runtime
         .sendMessage({
@@ -461,7 +546,7 @@ export default defineContentScript({
           moves: position.moves,
           depth: depthFor(providerId),
           multipv: arrowCounts[providerId],
-          elo: elos[providerId],
+          elo: eloFor(providerId),
           persona: personas[providerId],
         })
         .then((reply) => {
@@ -635,6 +720,24 @@ export default defineContentScript({
      * yang sama dengan yang dituruti mode auto, supaya yang "dilihat-lihat" kursor
      * adalah langkah-langkah yang memang sedang dipertimbangkan.
      */
+    /**
+     * Mulai game berikutnya sendiri setelah modal hasil muncul.
+     *
+     * Pesannya diarahkan ke baris mode auto di panel, bukan ke tempatnya sendiri: kedua
+     * mode ini sama-sama berjalan tanpa diminta, dan satu tempat untuk "apa yang sedang
+     * dilakukan ekstensi tanpa aku suruh" lebih mudah dibaca daripada dua.
+     */
+    const autoNewGame = createAutoNewGame({
+      enabled: () => autoNewGameSetting.enabled,
+      timing: () => autoNewGameSetting,
+      allow: () => autoNewGameSetting.labels,
+      onSeen: (labels) => void rememberSeenLabels(labels),
+      maxGames: () => autoNewGameSetting.maxGames,
+      onState: (message) => {
+        overlay.autoPlay.message = message;
+      },
+    });
+
     const idleDrift = createIdleDrift({
       idle: () => overlay.autoPlay.enabled && Date.now() >= autoBusyUntil,
       moves: () => {
@@ -644,6 +747,9 @@ export default defineContentScript({
     });
 
     ctx.setInterval(() => {
+      // Game baru otomatis TIDAK bergantung pada mode auto: keduanya setelan terpisah,
+      // dan ada yang memakai ini hanya untuk melewati modal hasil sambil bermain sendiri.
+      autoNewGame.tick();
       if (!overlay.autoPlay.enabled) return;
       maybeAutoPlay();
       idleDrift.tick();
@@ -663,6 +769,14 @@ export default defineContentScript({
         if (position.reanchored) {
           debug('[cmr] rantai langkah dimulai ulang:', position.reanchored);
         }
+
+        // Rantai yang dimulai ulang berarti papan ini bukan lanjutan dari yang tadi —
+        // game baru, atau papan lain. Offset Elo diacak ulang di situ, bukan tiap langkah.
+        refreshRating(Boolean(position.reanchored));
+        // Rantai yang dimulai ulang adalah satu-satunya bukti bahwa game baru benar-benar
+        // jalan — bukan sekadar tombolnya sudah diklik. Dari situ izin klik berikutnya
+        // dipulihkan.
+        if (position.reanchored) autoNewGame.onNewGame();
 
         // Mode auto memeriksa fen ini sebelum dan sesudah jeda, jadi ia harus selalu
         // menunjuk pembacaan yang sama dengan yang dikirim ke engine.
