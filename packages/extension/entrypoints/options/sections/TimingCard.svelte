@@ -2,6 +2,7 @@
   import Card from '../ui/Card.svelte';
   import Button from '../ui/Button.svelte';
   import Slider from '../ui/Slider.svelte';
+  import Hint from '../ui/Hint.svelte';
   import { settings, seconds } from '../settings.svelte';
   import { TIMING_MAX_MS, TIMING_MIN_MS, TIMING_STEP_MS } from '../../../lib/settings';
 </script>
@@ -23,20 +24,41 @@
 
   {#snippet hint()}
     <p>
-      Waktu acak antara hasil engine dan bidak mendarat di papan. Angka ini untuk langkah
-      utuh — jeda antar-klik diambil dari dalamnya, bukan ditambahkan di atasnya. Waktu
-      berpikir engine sendiri diatur lewat depth di blok Engine.
+      Setelah engine menemukan langkah, mode auto tidak langsung memainkannya. Ia menunggu
+      sebentar dulu — lamanya diambil acak di antara angka <b>min</b> dan <b>maks</b> —
+      supaya tidak terlihat seperti mesin.
     </p>
     <p>
-      Dua rentang, dipilih menurut langkahnya. Langkah memakan biasanya pantas lebih
-      cepat: bidak lawan sudah berdiri di kotak tujuan, jadi langkah itu tidak perlu
-      dicari — berlama-lama sebelum memakan justru terbaca lebih aneh daripada langsung.
+      Waktu ini sudah termasuk gerakan kursor dan kliknya, bukan tambahan di atasnya.
+    </p>
+    <p>
+      Ada dua rentang: satu untuk langkah biasa, satu untuk langkah memakan. Langkah
+      memakan dibuat lebih cepat karena manusia juga begitu — bidak lawan sudah jelas
+      terlihat, tidak perlu dipikir lama.
+    </p>
+    <p class="tip">
+      Jeda ini masih bisa dipercepat atau diperlambat lagi oleh "Waktu ikut posisi" dan
+      "Sadar sisa waktu".
     </p>
   {/snippet}
 
-  <p class="lead">Waktu acak antara hasil engine dan bidak mendarat di papan.</p>
+  <p class="lead">Berapa lama menunggu sebelum langkah dimainkan.</p>
 
-  <h3 class="group">Langkah tenang</h3>
+  <h3 class="group">
+    Langkah biasa
+    <Hint label="Penjelasan: jeda langkah biasa">
+      <p>Jeda untuk langkah yang tidak memakan bidak.</p>
+      <ul class="effects">
+        <li><b>Min dinaikkan</b> → tidak pernah ada langkah yang terlalu cepat.</li>
+        <li><b>Maks dinaikkan</b> → sesekali ada langkah yang lama, seperti sedang mikir.</li>
+        <li><b>Keduanya diturunkan</b> → main lebih cepat, cocok untuk bullet/blitz.</li>
+        <li><b>Min dan maks berjauhan</b> → temponya lebih bervariasi, lebih manusiawi.</li>
+      </ul>
+      <p class="tip">
+        Kalau min digeser melewati maks, maks ikut terdorong — begitu juga sebaliknya.
+      </p>
+    </Hint>
+  </h3>
   <Slider
     label="min"
     aria="Jeda minimum (ms)"
@@ -60,7 +82,20 @@
     onchange={(v) => settings.setTiming('maxMs', v)}
   />
 
-  <h3 class="group">Langkah memakan</h3>
+  <h3 class="group">
+    Langkah memakan
+    <Hint label="Penjelasan: jeda langkah memakan">
+      <p>Jeda khusus saat langkahnya memakan bidak lawan.</p>
+      <ul class="effects">
+        <li><b>Dinaikkan</b> → berhenti lebih lama sebelum memakan.</li>
+        <li><b>Diturunkan</b> → memakan hampir langsung, seperti refleks.</li>
+      </ul>
+      <p class="tip">
+        Sebaiknya tetap lebih pendek dari jeda langkah biasa. Berlama-lama sebelum memakan
+        bidak yang jelas-jelas bisa dimakan justru terlihat aneh.
+      </p>
+    </Hint>
+  </h3>
   <Slider
     label="min"
     aria="Jeda minimum saat memakan (ms)"

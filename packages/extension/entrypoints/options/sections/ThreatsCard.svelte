@@ -15,16 +15,19 @@
 
   {#snippet hint()}
     <p>
-      Menandai kotak tempat bidakmu kalah material kalau lawan menyerangnya dan
-      tukar-menukar di kotak itu dijalankan sampai habis. Merah untuk kerugian sebesar
-      bidak minor atau lebih, kuning untuk yang lebih kecil.
+      Kotak bidakmu diberi warna kalau bidak itu bisa dimakan lawan dan kamu rugi
+      setelah semua tukar-menukar di kotak itu selesai.
     </p>
+    <ul class="effects">
+      <li><b>Merah</b> → kamu bisa kehilangan kuda, gajah, atau yang lebih besar.</li>
+      <li><b>Kuning</b> → kerugiannya kecil, misalnya satu pion.</li>
+    </ul>
     <p>
-      Tidak melibatkan engine sama sekali: hitungannya dari posisi di papan, jadi
-      sorotannya muncul sebelum analisis selesai dan tetap ada walau semua engine
-      dimatikan. Karena itu ia juga tidak tahu soal serangan ganda atau taktik dua
-      langkah — yang dijawab hanya “apa yang bisa hilang di kotak ini”.
+      Tidak butuh engine, jadi muncul langsung dan tetap jalan walau semua engine mati.
+      Tapi ia hanya melihat satu kotak — jebakan atau taktik beberapa langkah tidak
+      terdeteksi.
     </p>
+    <p class="tip">Matikan kalau papan terasa terlalu ramai warna.</p>
   {/snippet}
 
   <p class="lead">Menandai kotak tempat bidakmu bisa hilang kalau ditukar sampai habis.</p>

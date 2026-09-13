@@ -28,16 +28,18 @@
 
   {#snippet hint()}
     <p>
-      Begitu modal hasil muncul, tombol game baru diklik sendiri — lewat kursor maya yang
-      sama dengan yang memainkan bidak, bukan lewat klik langsung. Tombolnya dikenali
-      dari teksnya, bukan dari nama kelas chess.com yang bisa berubah sewaktu-waktu.
+      Begitu game selesai dan jendela hasil muncul, ekstensi menunggu sebentar lalu
+      menekan tombol "New ..." untuk mencari lawan baru. Kliknya lewat kursor maya, sama
+      seperti saat memainkan bidak.
     </p>
+    <ul class="effects">
+      <li><b>Aktif</b> → main terus game demi game sampai batas di bawah tercapai.</li>
+      <li><b>Mati</b> → berhenti tiap satu game selesai, kamu yang klik sendiri.</li>
+    </ul>
     <p>
-      Tombol "Rematch" sengaja tidak dipakai: itu menantang lawan yang sama dan ia harus
-      menyetujuinya. Kalau ia menolak atau pergi, permintaannya menggantung dan tidak ada
-      game yang dimulai — padahal dari sisi ekstensi tombolnya sudah diklik. Tombol yang
-      menyangkut rated/unrated, pembelian, laporan, atau menerima tantangan tidak pernah
-      disentuh sama sekali.
+      Tombol "Rematch" tidak pernah dipakai — lawan harus setuju dulu, dan kalau ia
+      menolak, tidak ada game yang mulai. Tombol laporan, pembelian, atau menerima
+      tantangan juga tidak pernah disentuh.
     </p>
   {/snippet}
 
@@ -60,9 +62,15 @@
   <h3 class="group">
     Batas game per sesi
     <Hint label="Penjelasan: batas game per sesi">
-      <p>
-        Hitungannya nol lagi tiap tab dimuat ulang, atau tiap sakelar di atas dimatikan
-        lalu dinyalakan.
+      <p>Setelah sekian game, ekstensi berhenti sendiri dan tidak mencari lawan lagi.</p>
+      <ul class="effects">
+        <li><b>Dinaikkan</b> → main lebih banyak game tanpa perlu diawasi.</li>
+        <li><b>Diturunkan</b> → berhenti lebih cepat, jadi kamu lebih sering mengecek.</li>
+      </ul>
+      <p class="tip">
+        Hitungan kembali ke nol kalau tab dimuat ulang, atau sakelar di atas dimatikan
+        lalu dinyalakan lagi. Main puluhan game berturut-turut tanpa istirahat adalah pola
+        yang mencolok — batas kecil lebih aman.
       </p>
     </Hint>
   </h3>
@@ -83,8 +91,16 @@
     Jeda sebelum klik
     <Hint label="Penjelasan: jeda sebelum klik">
       <p>
-        Jauh lebih panjang daripada jeda langkah, dan itu disengaja: manusia melihat skor
-        akhir dan perubahan ratingnya dulu sebelum memutuskan main lagi.
+        Berapa lama menunggu setelah game selesai sebelum menekan tombol game baru. Diacak
+        di antara min dan maks. (1000 ms = 1 detik.)
+      </p>
+      <ul class="effects">
+        <li><b>Dinaikkan</b> → istirahat lebih lama di antara game. Lebih wajar.</li>
+        <li><b>Diturunkan</b> → langsung lanjut game berikutnya. Lebih banyak game per jam.</li>
+      </ul>
+      <p class="tip">
+        Sengaja jauh lebih lama dari jeda langkah: manusia biasanya melihat hasil dan
+        perubahan rating dulu sebelum main lagi.
       </p>
     </Hint>
   </h3>
@@ -117,19 +133,20 @@
     Tombol yang boleh diklik
     <Hint label="Penjelasan: tombol yang boleh diklik">
       <p>
-        Daftar ini dikumpulkan dari modal yang benar-benar muncul di layarmu, jadi
-        bentuknya mengikuti bahasa dan waktu kontrol yang kamu pakai.
+        Pilih jenis game berikutnya. Daftarnya diambil dari tombol yang pernah muncul di
+        jendela hasil game-mu, misalnya "New 3 min" atau "New 10 min".
       </p>
-      <p>
-        Tidak ada yang dicentang berarti pola bawaan yang dipakai ("New ..."), bukan
-        berarti tidak ada yang boleh. Centang beberapa kalau kamu mau waktu kontrol
-        tertentu saja, termasuk custom seperti "New 10 sec + 0.1"; yang dicentang dipilih
-        acak tiap game. Kalau tak satu pun muncul di modal, ekstensi diam saja — bukan
-        memakai tombol lain.
-      </p>
-      <p>
-        Tombol berbahaya (analisis, laporan, pembelian, menerima tantangan) tidak pernah
-        diklik walau tercentang.
+      <ul class="effects">
+        <li><b>Tidak ada yang dicentang</b> → tombol apa pun yang diawali "New" dipakai.</li>
+        <li><b>Beberapa dicentang</b> → salah satunya dipilih acak tiap game.</li>
+        <li>
+          <b>Yang dicentang tidak muncul</b> → ekstensi diam saja, tidak menekan tombol
+          lain.
+        </li>
+      </ul>
+      <p class="tip">
+        "Bersihkan daftar" berguna kalau tampilan chess.com berubah atau kamu ganti bahasa.
+        Tombol berbahaya (laporan, pembelian, dll.) tidak pernah diklik walau tercentang.
       </p>
     </Hint>
   </h3>

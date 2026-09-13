@@ -15,14 +15,21 @@
 
   {#snippet hint()}
     <p>
-      Titik merah kecil yang menunjukkan posisi kursor menurut chess.com — bukan kursor
-      aslimu. Halaman web tidak bisa memindahkan kursor sistem, jadi seluruh gerakan yang
-      dikirim mode auto tidak terlihat sama sekali tanpa penanda ini.
+      Saat mode auto jalan, kursor aslimu tidak ikut bergerak — gerakannya "tak terlihat".
+      Titik merah ini menunjukkan ke mana kursor itu sebenarnya bergerak dan di mana ia
+      mengklik.
     </p>
+    <ul class="effects">
+      <li><b>Aktif</b> → titik merah muncul di papan, mengikuti gerakan mode auto.</li>
+      <li><b>Mati</b> → tidak ada penanda, mode auto tetap jalan seperti biasa.</li>
+    </ul>
     <p>
-      Alat pemeriksa, bukan bagian dari permainan: gunanya melihat jalur dan titik klik
-      benar-benar mendarat di kotak yang dimaksud. Titiknya tidak bisa diklik dan tidak
-      mengubah apa pun, tapi ia terlihat oleh siapa saja yang melihat layarmu.
+      Hanya untuk mengecek apakah klik mendarat di kotak yang benar. Tidak mengubah cara
+      bermain.
+    </p>
+    <p class="tip">
+      Biarkan mati untuk dipakai sehari-hari — titiknya terlihat oleh siapa saja yang
+      melihat layarmu, termasuk saat kamu siaran.
     </p>
   {/snippet}
 

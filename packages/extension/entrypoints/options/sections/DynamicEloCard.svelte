@@ -2,6 +2,7 @@
   import Card from '../ui/Card.svelte';
   import Toggle from '../ui/Toggle.svelte';
   import Slider from '../ui/Slider.svelte';
+  import Hint from '../ui/Hint.svelte';
   import { settings } from '../settings.svelte';
   import { OFFSET_MAX, OFFSET_MIN } from '../../../lib/dynamicElo';
 
@@ -20,30 +21,47 @@
 
   {#snippet hint()}
     <p>
-      Kekuatan engine dihitung dari rating yang terbaca di halaman, bukan dari slider
-      Kekuatan per engine — kalau mode ini menyala, slider itu tidak berlaku. Ratingnya
-      dibaca dari komponen pemain, jadi ia selalu rating untuk tipe game yang sedang
-      dimainkan: pindah dari rapid ke blitz tidak perlu diatur ulang.
+      Kekuatan engine diatur otomatis dari rating-mu yang tampil di halaman, ditambah
+      sedikit selisih. Jadi engine selalu main sedikit di atas levelmu — tidak terlalu
+      jago sampai mencurigakan.
     </p>
     <p>
-      Offsetnya diacak sekali per game di dalam rentang di bawah, bukan satu angka tetap:
-      offset yang sama persis tiap game menghasilkan kekuatan yang seragam, dan
-      keseragaman itulah yang jadi pola. Isi min dan maks dengan angka yang sama kalau
-      kamu memang mau offset tetap.
+      Contoh: rating-mu 1200 dan selisihnya +50 sampai +150, engine main di kisaran
+      1250–1350. Angka pastinya diacak sekali tiap game, supaya kekuatannya tidak persis
+      sama terus.
     </p>
-    <p>
-      Hasilnya tetap dijepit ke rentang yang didukung tiap engine. Stockfish tidak bisa
-      turun di bawah 1320, jadi kalau rating-mu 800, angka yang benar-benar dipakai tetap
-      1320 — bukan mode ini yang rusak. Kalau rating tidak terbaca (game tanpa rating,
-      lawan bot), slider per engine yang dipakai kembali.
+    <ul class="effects">
+      <li><b>Aktif</b> → slider "Kekuatan" di setiap engine diabaikan.</li>
+      <li><b>Mati</b> → slider "Kekuatan" per engine yang dipakai.</li>
+    </ul>
+    <p class="tip">
+      Engine punya batas bawah. Stockfish tidak bisa lebih lemah dari 1320 — kalau
+      rating-mu 800, ia tetap main di 1320. Kalau rating tidak terbaca (misalnya lawan
+      bot), slider per engine yang dipakai.
     </p>
   {/snippet}
 
-  <p class="lead">
-    Kekuatan engine mengikuti rating yang terbaca di halaman. Menyalakannya membuat
-    slider Kekuatan per engine tidak berlaku.
-  </p>
+  <p class="lead">Engine main sedikit di atas rating-mu, diatur otomatis.</p>
 
+  <h3 class="group">
+    Selisih dari rating-mu
+    <Hint label="Penjelasan: selisih dari rating">
+      <p>
+        Berapa poin engine lebih kuat (atau lebih lemah) dari rating-mu. Tiap game diambil
+        angka acak di antara min dan maks.
+      </p>
+      <ul class="effects">
+        <li><b>Dinaikkan</b> → engine makin kuat dibanding kamu. Lebih sering menang.</li>
+        <li><b>Diturunkan</b> → engine makin dekat dengan levelmu. Lebih wajar.</li>
+        <li><b>Angka minus</b> → engine sengaja lebih lemah dari kamu.</li>
+        <li><b>Min = maks</b> → selisihnya selalu sama persis tiap game.</li>
+      </ul>
+      <p class="tip">
+        Selisih yang terlalu besar membuat rating naik terlalu cepat, dan lonjakan
+        seperti itu mudah terlihat mencurigakan.
+      </p>
+    </Hint>
+  </h3>
   <Slider
     label="min"
     aria="Offset minimum"

@@ -226,8 +226,34 @@
     margin: 0 0 13px;
   }
 
-  .panel :global(p:last-child) {
+  .panel :global(p:last-child),
+  .panel :global(ul:last-child) {
     margin-bottom: 0;
+  }
+
+  /*
+   * Daftar efek: apa yang terjadi kalau angkanya dinaikkan atau diturunkan. Dipisah
+   * dari paragraf penjelasan supaya pertanyaan yang paling sering — "kalau aku geser ke
+   * kanan, jadi apa?" — bisa dijawab dengan melirik, tanpa membaca ulang semuanya.
+   */
+  .panel :global(.effects) {
+    display: grid;
+    gap: 8px;
+    margin: 0 0 13px;
+    padding: 12px 14px;
+    list-style: none;
+    border-radius: var(--r-sm);
+    background: var(--fill-press);
+    box-shadow: var(--press-sm);
+  }
+
+  .panel :global(.effects b) {
+    color: var(--ink);
+  }
+
+  .panel :global(.tip) {
+    color: var(--ink-faint);
+    font-size: 12.5px;
   }
 
   .panel:popover-open {

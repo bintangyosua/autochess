@@ -11,23 +11,22 @@
       Engine
       <Hint label="Penjelasan: setelan engine">
         <p>
-          Depth, jumlah panah, kekuatan, dan kepribadian per engine. Semuanya berlaku
-          untuk semua tab dan menimpa nilai di <code>engines.config.json</code> tanpa
-          mengubah berkasnya.
+          Atur tiap engine secara terpisah. Perubahan langsung berlaku di semua tab, dan
+          berkas <code>engines.config.json</code> tidak ikut berubah.
         </p>
+        <ul class="effects">
+          <li><b>Sakelar dimatikan</b> → engine itu tidak dipakai dan panahnya hilang.</li>
+          <li><b>kembalikan ke bawaan</b> → angka kembali ke nilai dari berkas config.</li>
+        </ul>
         <p>
-          Pilihan yang tersedia berbeda-beda karena tiap engine memang menyediakan tombol
-          yang berbeda. Engine manusiawi (Maia) tidak punya setelan depth: mode policy
-          hanya menghitung satu node, dan kekuatannya melekat pada bobot yang dipakai —
-          pilih Maia 1300, 1500, atau 1900 di <code>engines.config.json</code>. Stockfish
-          tidak punya pilihan kepribadian; Dragon dan Komodo punya. Sebaliknya hanya
-          Stockfish yang punya Elo native.
+          Tiap engine punya pilihan yang berbeda. Maia tidak punya depth dan kekuatan —
+          levelnya ditentukan versi yang dipakai (1300, 1500, atau 1900). Kepribadian hanya
+          ada di Dragon dan Komodo.
         </p>
-        <p>
-          Sakelar aktif/mati di sini hanya berlaku di ekstensi: engine tetap dijalankan
-          bridge, cuma tidak diminta menghitung dan tidak muncul di overlay. Untuk
-          mematikannya sampai bridge tidak menjalankannya sama sekali, pakai
-          <code>"enabled": false</code> di <code>engines.config.json</code>.
+        <p class="tip">
+          Mematikan engine di sini tidak menghentikan programnya di bridge. Untuk benar-benar
+          mematikannya, pakai <code>"enabled": false</code> di
+          <code>engines.config.json</code>.
         </p>
       </Hint>
     </h2>

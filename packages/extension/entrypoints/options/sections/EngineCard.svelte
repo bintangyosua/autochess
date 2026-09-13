@@ -54,18 +54,21 @@
       <div class="head">
         <span class="label">Depth</span>
         <Hint label={`Penjelasan depth ${provider.label}`}>
-          <p>
-            Seberapa jauh engine berpikir. Kalau depth-nya rendah, ia sudah lebih lemah
-            daripada Elo mana pun di bawah — dan slider Kekuatan jadi tidak berefek.
-          </p>
+          <p>Berapa langkah ke depan yang dihitung engine sebelum memberi saran.</p>
+          <ul class="effects">
+            <li><b>Dinaikkan</b> → saran lebih akurat, tapi engine butuh waktu lebih lama.</li>
+            <li><b>Diturunkan</b> → saran keluar lebih cepat, tapi lebih sering salah.</li>
+          </ul>
           <!-- Hubungan ini tidak terduga sampai kamu menemukannya sendiri: daftar
                kelanjutan di panel rekomendasi terasa "kosong" padahal engine memang belum
                menghitung sejauh itu. -->
           <p>
-            Ini juga yang menentukan panjang daftar kelanjutan di panel rekomendasi:
-            engine hanya melaporkan garis sejauh yang ia cari. Di depth 1–2 tidak ada
-            kelanjutan sama sekali, di depth 4 sekitar empat langkah, dan baru dari
-            sekitar depth 12 daftarnya benar-benar panjang.
+            Depth juga menentukan panjang daftar lanjutan langkah di panel rekomendasi. Di
+            depth 1–2 daftarnya kosong, dan baru panjang mulai sekitar depth 12.
+          </p>
+          <p class="tip">
+            Depth yang terlalu rendah membuat engine lemah dengan sendirinya — slider
+            Kekuatan jadi tidak berpengaruh.
           </p>
         </Hint>
         {#if settings.depths[provider.id] !== undefined}
@@ -96,13 +99,16 @@
            dikirim ke engine sebagai MultiPV. -->
       <Hint label={`Penjelasan panah ${provider.label}`}>
         <p>
-          Berapa langkah teratas yang digambar di papan, lengkap dengan skornya. Yang
-          pertama tebal, sisanya makin tipis.
+          Berapa pilihan langkah terbaik yang ditampilkan sebagai panah di papan. Panah
+          paling tebal = langkah terbaik, makin tipis = makin kurang bagus.
         </p>
-        <p>
-          Angkanya juga dipakai sebagai <code>MultiPV</code> — jadi menaikkannya membuat
-          engine menjaga lebih banyak baris sekaligus, dan tiap baris jadi sedikit lebih
-          dangkal pada depth yang sama.
+        <ul class="effects">
+          <li><b>Dinaikkan</b> → lebih banyak alternatif terlihat, tapi papan lebih ramai.</li>
+          <li><b>Diturunkan</b> → hanya langkah terbaik, papan lebih bersih.</li>
+        </ul>
+        <p class="tip">
+          Menambah panah juga membuat engine sedikit lebih lambat dan kurang dalam, karena
+          ia harus menghitung beberapa pilihan sekaligus.
         </p>
       </Hint>
       {#if settings.arrows[provider.id] !== undefined}
@@ -132,15 +138,20 @@
         <!-- Perbedaan ini nyata dan tidak bisa disembunyikan: hanya Stockfish yang punya
              UCI_Elo. Sisanya dipetakan ke skala Skill, jadi angkanya perkiraan. -->
         <Hint label={`Penjelasan kekuatan ${provider.label}`}>
-          <p>
+          <p>Seberapa kuat engine bermain, dalam angka mirip rating.</p>
+          <ul class="effects">
+            <li><b>Dinaikkan</b> → engine main lebih kuat. Paling kanan = kekuatan penuh.</li>
+            <li><b>Diturunkan</b> → engine sengaja membuat kesalahan, main lebih lemah.</li>
+          </ul>
+          <p class="tip">
             {#if provider.strength.mode === 'skill'}
-              Perkiraan — engine ini tidak punya <code>UCI_Elo</code>, angkanya dipetakan
-              ke <code>Skill</code> 0–{provider.strength.levels}.
+              Angka untuk engine ini hanya perkiraan (ditandai ≈), karena ia tidak punya
+              pengaturan rating asli.
             {:else}
-              Native <code>UCI_Elo</code>, rentang {provider.strength.min}–{provider
-                .strength.max}.
+              Rentangnya {provider.strength.min}–{provider.strength.max}.
             {/if}
-            Skalanya milik engine, bukan skala Chess.com atau Lichess.
+            Skala ini milik engine, tidak sama persis dengan rating chess.com — 1500 di sini
+            belum tentu setara 1500 di sana.
           </p>
         </Hint>
         {#if settings.elos[provider.id] !== undefined}
